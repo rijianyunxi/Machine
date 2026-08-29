@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}告警记录{% endblock %}
+{% block subtitle %}<p class="page-sub">复核告警：确认真实违规 / 标记误报，误报率用于反哺调参</p>{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="filter-bar">
+    <select id="f-camera" style="min-width:150px"><option value="">全部相机</option></select>
+    <select id="f-rule" style="min-width:170px"><option value="">全部规则</option></select>
+    <select id="f-status" style="min-width:130px">
+      <option value="">全部状态</option>
+      <option value="new">新告警</option>
+      <option value="confirmed">确认违规</option>
+      <option value="false_positive">误报</option>
+      <option value="resolved">已处理</option>
+    </select>
+    <select id="f-days" style="min-width:130px">
+      <option value="1">最近 24 小时</option>
+      <option value="7" selected>最近 7 天</option>
+      <option value="30">最近 30 天</option>
+      <option value="">全部时间</option>
+    </select>
+    <button class="mini" onclick="refresh()">查询</button>
+    <span class="muted" id="total" style="margin-left:auto"></span>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>时间</th><th>相机</th><th>规则</th><th>置信度</th><th>快照</th>
+      <th>状态</th><th style="text-align:right">操作</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <div class="pager">
+    <button class="mini ghost" id="prev" onclick="page(-1)">上一页</button>
+    <span class="muted" id="pageinfo"></span>
+    <button class="mini ghost" id="next" onclick="page(1)">下一页</button>
+  </div>
+</div>
+
+<div class="modal-mask" id="note-modal">
+  <div class="modal" style="width:440px">
+    <div class="modal-h"><h3 id="nm-title">标记告警</h3>
+      <button class="modal-x" onclick="closeNote()">✕</button></div>
+    <div class="modal-b">
+      <label>备注（可选，误报原因 / 处理说明）</label>
+      <textarea id="nm-note" style="width:100%" rows="3"
+        placeholder="例如：画面反光被误识别为烟头"></textarea>
+    </div>
+    <div class="modal-f">
+      <button class="ghost" onclick="closeNote()">取消</button>
+      <button id="nm-confirm" onclick="submitStatus(this)">确定</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let offset = 0, limit = 50, total = 0, target = null, targetStatus = null;
+
+async function initFilters() {
+  const [cams, rules] = await Promise.all([api("/api/cameras"), api("/api/rules")]);
+  document.getElementById("f-camera").innerHTML += cams.cameras
+    .map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+  document.getElementById("f-rule").innerHTML += rules.rules
+    .map(r => `<option value="${r.id}">R${String(r.id).padStart(2, "0")} ${esc(r.name)}</option>`).join("");
+}
+
+function qs() {
+  const p = new URLSearchParams({ limit, offset });
+  const cam = document.getElementById("f-camera").value;
+  const rule = document.getElementById("f-rule").value;
+  const status = document.getElementById("f-status").value;
+  const days = document.getElementById("f-days").value;
+  if (cam) p.set("camera", cam);
+  if (rule) p.set("rule", rule);
+  if (status) p.set("status", status);
+  if (days) p.set("days", days);
+  return p;
+}
+
+async function refresh() {
+  offset = 0;
+  const data = await api("/api/alerts?" + qs());
+  total = data.total;
+  document.getElementById("rows").innerHTML = data.items.map(a => `
+    <tr>
+      <td><div class="mono">${tsToTime(a.timestamp)}</div>
+        <div class="muted" style="font-size:11px">${relTime(a.timestamp)}</div></td>
+      <td>${esc(a.camera_id)}</td>
+      <td><span class="chip blue plain">R${String(a.rule_id).padStart(2, "0")}</span> ${esc(a.rule_name)}</td>
+      <td class="mono">${a.confidence?.toFixed(2)}</td>
+      <td>${a.snapshot_path
+        ? `<a href="/snapshots/${esc(a.snapshot_path.replace(/^storage[\\/]snapshots[\\/]/, ""))}"
+             onclick="showImageModal(this.href, this.dataset.title); return false"
+             data-title="${esc(a.camera_id)} · ${esc(a.rule_name)}">查看</a>`
+        : '<span class="muted">—</span>'}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td class="actions" style="text-align:right">
+        ${a.status === "new" ? `
+          <button class="mini danger" onclick="mark(${a.id},'confirmed',this)">确认违规</button>
+          <button class="mini ghost" onclick="mark(${a.id},'false_positive',this)">误报</button>` : ""}
+        ${a.status !== "resolved"
+          ? `<button class="mini ghost" onclick="mark(${a.id},'resolved',this)">完结</button>` : ""}
+      </td>
+    </tr>`).join("")
+    || `<tr><td colspan="7"><div class="empty"><p>无符合条件的告警</p></div></td></tr>`;
+  document.getElementById("total").textContent = `共 ${total} 条`;
+  document.getElementById("pageinfo").textContent = total
+    ? `${Math.min(offset + 1, total)}–${Math.min(offset + limit, total)} / ${total}` : "";
+}
+
+function page(delta) {
+  const next = offset + delta * limit;
+  if (next < 0 || next >= total) return;
+  offset = next; refresh();
+}
+
+function mark(id, status) {
+  target = id; targetStatus = status;
+  document.getElementById("nm-title").textContent =
+    ({ confirmed: "确认违规", false_positive: "标记为误报", resolved: "完结处理" })[status];
+  document.getElementById("nm-note").value = "";
+  document.getElementById("note-modal").classList.add("open");
+}
+function closeNote() { document.getElementById("note-modal").classList.remove("open"); }
+
+async function submitStatus(btn) {
+  const note = document.getElementById("nm-note").value.trim();
+  await withLoading(btn, async () => {
+    try {
+      await api(`/api/alerts/${target}/status`, { method: "POST",
+        body: { status: targetStatus, note: note || null } });
+      toast("已更新"); closeNote(); refresh();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+initFilters().then(refresh);
+</script>
+{% endblock %}

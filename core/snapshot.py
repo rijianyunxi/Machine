@@ -1,0 +1,185 @@
+"""
+Snapshot capture and storage module.
+
+When a violation is detected, saves the current frame as a JPEG image
+with bounding boxes and violation labels annotated on it.
+"""
+
+import os
+from datetime import datetime
+from typing import List, Optional
+
+import cv2
+import numpy as np
+
+from core.analyzer import Violation
+from core.detector import Detection
+from utils.logger import get_logger
+
+
+# Color palette for different severity levels (BGR format)
+SEVERITY_COLORS = {
+    1: (0, 255, 0),      # Green - low
+    2: (0, 165, 255),    # Orange - medium
+    3: (0, 0, 255),      # Red - high
+    4: (0, 0, 200),      # Dark red - critical
+}
+
+# Rule name display labels (Chinese + English)
+RULE_LABELS = {
+    1: ("No Safety Helmet", "未戴安全帽"),
+    13: ("Smoking in No-fire Zone", "禁火区吸烟"),
+    14: ("Person Holding Cigarette", "持烟未吸/禁火区持烟"),
+}
+
+
+class SnapshotManager:
+    """Manages snapshot capture and storage for detected violations."""
+
+    def __init__(self, settings: dict):
+        self._logger = get_logger("snapshot")
+
+        snap_cfg = settings.get("snapshot", {})
+        self._save_dir = snap_cfg.get("save_dir", "storage/snapshots")
+        self._jpeg_quality = snap_cfg.get("jpeg_quality", 90)
+        self._annotate = snap_cfg.get("annotate", True)
+        self._box_thickness = snap_cfg.get("box_thickness", 2)
+        self._font_scale = snap_cfg.get("font_scale", 0.6)
+
+        # Ensure base save directory exists
+        os.makedirs(self._save_dir, exist_ok=True)
+
+    def save_snapshot(
+        self,
+        frame: np.ndarray,
+        violation: Violation,
+        detections: Optional[List[Detection]] = None,
+    ) -> Optional[str]:
+        """
+        Save a violation snapshot to disk.
+
+        Args:
+            frame: Current video frame (BGR).
+            violation: The detected violation.
+            detections: Optional list of all detections to draw on frame.
+
+        Returns:
+            File path of saved snapshot, or None on error.
+        """
+        try:
+            # Create date-based subdirectory
+            date_str = datetime.fromtimestamp(violation.timestamp).strftime("%Y-%m-%d")
+            day_dir = os.path.join(self._save_dir, date_str)
+
+            # Create type-based subdirectory: date / rule_type
+            rule_dir = os.path.join(day_dir, violation.rule_name)
+            os.makedirs(rule_dir, exist_ok=True)
+
+            # Generate filename
+            time_str = datetime.fromtimestamp(violation.timestamp).strftime(
+                "%H%M%S_%f"
+            )[:12]
+            filename = f"{violation.camera_id}_R{violation.rule_id:02d}_{time_str}.jpg"
+            filepath = os.path.join(rule_dir, filename)
+
+            # Prepare annotated frame
+            output_frame = frame.copy()
+
+            if self._annotate:
+                output_frame = self._annotate_frame(
+                    output_frame, violation, detections
+                )
+
+            # Save as JPEG
+            quality = [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
+            success = cv2.imwrite(filepath, output_frame, quality)
+
+            if success:
+                self._logger.info(
+                    f"Snapshot saved: {filepath} "
+                    f"[{violation.rule_name}, conf={violation.confidence:.2f}]"
+                )
+                return filepath
+            else:
+                self._logger.error(f"Failed to save snapshot: {filepath}")
+                return None
+
+        except Exception as e:
+            self._logger.error(f"Snapshot error: {e}")
+            return None
+
+    def _annotate_frame(
+        self,
+        frame: np.ndarray,
+        violation: Violation,
+        detections: Optional[List[Detection]] = None,
+    ) -> np.ndarray:
+        """Draw annotations on the frame: bounding boxes, labels, violation info."""
+        color = SEVERITY_COLORS.get(violation.severity, (0, 0, 255))
+        thickness = self._box_thickness
+        font_scale = self._font_scale
+
+        # Draw all person detection boxes (light gray)
+        if detections:
+            for det in detections:
+                if det.class_name.lower() == "person":
+                    x1, y1, x2, y2 = det.bbox
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (200, 200, 200), 1)
+                    label = f"{det.class_name} {det.confidence:.1f}"
+                    cv2.putText(
+                        frame,
+                        label,
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        font_scale * 0.7,
+                        (200, 200, 200),
+                        1,
+                    )
+
+        # Draw violation bounding box (colored, thicker)
+        if violation.bbox:
+            x1, y1, x2, y2 = violation.bbox
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+
+        # Draw violation banner at top of frame
+        rule_info = RULE_LABELS.get(violation.rule_id, (violation.rule_name, ""))
+        banner_text = f"[R{violation.rule_id:02d}] {rule_info[0]}"
+        if rule_info[1]:
+            banner_text += f" | {rule_info[1]}"
+
+        # Background rectangle for banner
+        (text_w, text_h), _ = cv2.getTextSize(
+            banner_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+        )
+        cv2.rectangle(frame, (0, 0), (text_w + 20, text_h + 20), color, -1)
+        cv2.putText(
+            frame,
+            banner_text,
+            (10, text_h + 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (255, 255, 255),
+            thickness,
+        )
+
+        # Draw timestamp and camera ID at bottom
+        time_str = datetime.fromtimestamp(violation.timestamp).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        footer = f"{violation.camera_id} | {time_str} | conf={violation.confidence:.2f}"
+        (fw, fh), _ = cv2.getTextSize(
+            footer, cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, 1
+        )
+        h = frame.shape[0]
+        cv2.rectangle(frame, (0, h - fh - 15), (fw + 20, h), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            footer,
+            (10, h - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale * 0.8,
+            (255, 255, 255),
+            1,
+        )
+
+        return frame

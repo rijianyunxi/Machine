@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}规则配置{% endblock %}
+{% block subtitle %}<p class="page-sub">规则即数据：参数 / 绑定模型 / 分配相机全部在线可调，下一帧生效</p>{% endblock %}
+{% block actions %}
+<button onclick="openEdit(null)">＋ 新建规则</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>ID</th><th>名称</th><th>模板</th><th>绑定模型</th><th>使用相机</th>
+      <th>7 天误报率</th><th>状态</th><th style="text-align:right">操作</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</div>
+
+<div class="modal-mask" id="modal">
+  <div class="modal" style="width:640px">
+    <div class="modal-h"><h3 id="m-title">新建规则</h3>
+      <button class="modal-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-b">
+      <div class="form-grid">
+        <div><label>规则 ID（留空自动分配）</label>
+          <input id="f-id" class="w240" type="number"></div>
+        <div><label>严重度（1 低 ~ 4 严重）</label>
+          <input id="f-severity" class="w240" type="number" min="1" max="4" value="3"></div>
+      </div>
+      <label>规则名称（英文标识）</label>
+      <input id="f-name" class="w320" placeholder="no_safety_vest">
+      <label>描述</label>
+      <input id="f-desc" style="width:100%">
+      <label>模板类型</label>
+      <select id="f-template" style="width:100%" onchange="renderParams()"></select>
+      <label>绑定模型（该规则只消费所选模型的检测结果）</label>
+      <div class="inline-checks" id="f-models"></div>
+      <div id="f-params"></div>
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="f-enabled" checked> 启用
+      </label>
+    </div>
+    <div class="modal-f">
+      <button class="ghost" onclick="closeModal()">取消</button>
+      <button onclick="saveRule(this)">保存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let TEMPLATES = {}, rules = [], editing = null;
+
+async function init() {
+  const [t, ms] = await Promise.all([
+    api("/api/rules/templates"),
+    api("/api/models").then(r => r.models.map(m => m.name)),
+  ]);
+  TEMPLATES = t.templates;
+  document.getElementById("f-template").innerHTML = Object.entries(TEMPLATES)
+    .map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  document.getElementById("f-models").innerHTML = ms.map(m => `
+    <label><input type="checkbox" value="${esc(m)}"> ${esc(m)}</label>`).join("");
+  refresh();
+}
+
+function renderParams(template, params = {}) {
+  const tpl = template || document.getElementById("f-template").value;
+  const spec = TEMPLATES[tpl];
+  document.getElementById("f-params").innerHTML = spec.params.map(p => {
+    const val = params[p.name] !== undefined ? params[p.name] : p.default;
+    if (p.type === "classes" || p.type === "list") {
+      const s = Array.isArray(val) ? val.join(", ") : val;
+      return `<label>${esc(p.desc)}</label>
+        <input style="width:100%" data-param="${p.name}" value="${esc(s)}"
+          placeholder="类别名用英文逗号分隔">`;
+    }
+    return `<label>${esc(p.desc)}</label>
+      <input class="w240" data-param="${p.name}" type="number" step="0.05"
+        value="${esc(val)}">`;
+  }).join("");
+}
+
+function render(summary) {
+  const rate = r => {
+    if (!summary) return "—";
+    const e = summary.by_rule[r.id];
+    if (!e || e.false_positive_rate == null) return '<span class="muted">未复核</span>';
+    const pct = (e.false_positive_rate * 100).toFixed(0) + "%";
+    return e.false_positive_rate > 0.5
+      ? `<span style="color:var(--red);font-weight:600">${pct}</span>` : pct;
+  };
+  document.getElementById("rows").innerHTML = rules.map(r => `
+    <tr>
+      <td class="mono">R${String(r.id).padStart(2, "0")}</td>
+      <td><b>${esc(r.name)}</b>
+        ${r.warnings?.length ? `<div class="muted" style="color:var(--yellow);font-size:11.5px">⚠ ${esc(r.warnings.join("；"))}</div>` : ""}
+        <div class="muted" style="font-size:11.5px">${esc(r.description)}</div></td>
+      <td class="muted">${esc(TEMPLATES[r.template]?.label || r.template)}</td>
+      <td>${r.models.map(m => badge(m, "blue")).join(" ") || badge("全部模型")}</td>
+      <td>${r.cameras.length ? `<span class="muted">${r.cameras.length} 路</span>` : '<span class="muted">未分配</span>'}</td>
+      <td>${rate(r)}</td>
+      <td>${r.enabled ? badge("启用", "green") : badge("停用")}</td>
+      <td class="actions" style="text-align:right">
+        <button class="mini ghost" onclick="openEdit(${r.id})">编辑</button>
+        <button class="mini ghost" onclick="toggle(${r.id}, ${!r.enabled}, this)">
+          ${r.enabled ? "停用" : "启用"}</button>
+        <button class="mini danger" onclick="del(${r.id}, this)">删除</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="8"><div class="empty"><p>暂无规则</p></div></td></tr>`;
+}
+
+function openEdit(id) {
+  editing = id;
+  const r = rules.find(x => x.id === id);
+  document.getElementById("m-title").textContent = id ? `编辑规则 · R${id}` : "新建规则";
+  document.getElementById("f-id").value = r?.id || "";
+  document.getElementById("f-id").disabled = !!id;
+  document.getElementById("f-name").value = r?.name || "";
+  document.getElementById("f-desc").value = r?.description || "";
+  document.getElementById("f-template").value = r?.template || Object.keys(TEMPLATES)[0];
+  document.querySelectorAll("#f-models input").forEach(cb => {
+    cb.checked = !!(r && (r.models || []).includes(cb.value));
+  });
+  renderParams(r?.template, r?.params || {});
+  document.getElementById("f-severity").value = r?.severity ?? 3;
+  document.getElementById("f-enabled").checked = r ? r.enabled : true;
+  document.getElementById("modal").classList.add("open");
+}
+function closeModal() { document.getElementById("modal").classList.remove("open"); }
+
+function collectParams() {
+  const out = {};
+  document.querySelectorAll("#f-params [data-param]").forEach(el => {
+    const v = el.value.trim();
+    out[el.dataset.param] = el.type === "text"
+      ? (v ? v.split(",").map(x => x.trim()).filter(Boolean) : [])
+      : +v;
+  });
+  return out;
+}
+
+async function saveRule(btn) {
+  const body = {
+    id: +document.getElementById("f-id").value || null,
+    name: document.getElementById("f-name").value.trim(),
+    description: document.getElementById("f-desc").value.trim(),
+    template: document.getElementById("f-template").value,
+    models: [...document.querySelectorAll("#f-models input:checked")].map(x => x.value),
+    params: collectParams(),
+    severity: +document.getElementById("f-severity").value,
+    enabled: document.getElementById("f-enabled").checked,
+  };
+  await withLoading(btn, async () => {
+    try {
+      if (editing) await api(`/api/rules/${editing}`, { method: "PUT", body });
+      else await api("/api/rules", { method: "POST", body });
+      toast("已保存，下一帧生效");
+      closeModal(); refresh();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+async function toggle(id, enable, btn) {
+  await withLoading(btn, async () => {
+    try { await api(`/api/rules/${id}`, { method: "PUT", body: { enabled: enable } }); toast("已生效"); refresh(); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+async function del(id, btn) {
+  if (!await confirmDialog(`删除规则 R${id}？历史告警记录会保留。`)) return;
+  await withLoading(btn, async () => {
+    try { await api(`/api/rules/${id}`, { method: "DELETE" }); toast("已删除"); refresh(); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+
+const refresh = async () => {
+  const [r, s] = await Promise.all([api("/api/rules"), api("/api/alerts/summary")]);
+  rules = r.rules;
+  render(rules.length ? s : null);
+};
+init();
+</script>
+{% endblock %}

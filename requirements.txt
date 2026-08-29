@@ -1,0 +1,23 @@
+# Production dependencies (pinned to versions validated in .venv)
+
+# Core dependencies
+opencv-python
+numpy
+Pillow
+scipy
+
+# YOLOv8 detection model
+ultralytics==8.4.123
+
+# Configuration
+PyYAML
+ruamel.yaml
+
+# Web panel
+fastapi
+uvicorn
+jinja2
+python-multipart
+
+# Utilities
+python-dateutil==2.9.0.post0

@@ -1,0 +1,230 @@
+"""
+Behavior analyzer - template-driven rule evaluation.
+
+Each enabled rule from the rules store is evaluated by its template check:
+  ppe_absence           - person missing required PPE (or negative class hit)
+  presence_near_person  - trigger object near/overlapping a person
+
+Rule params (class sets, margins, ratios) come from config/rules.yaml, so
+panel edits take effect on the next frame. Class names are matched
+case-insensitively.
+"""
+
+import threading
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+from core.detector import Detection
+from rules.rules_engine import (
+    TEMPLATE_PPE_ABSENCE,
+    TEMPLATE_PRESENCE_NEAR_PERSON,
+    RuleDefinition,
+    get_rules_store,
+)
+from utils.logger import get_logger
+
+
+@dataclass
+class Violation:
+    """A detected rule violation."""
+
+    camera_id: str
+    rule_id: int
+    rule_name: str
+    description: str
+    confidence: float
+    severity: int
+    timestamp: float
+    # Bounding box of the violating person/object (if applicable)
+    bbox: Optional[tuple] = None
+    # Extra context info
+    extra: Optional[dict] = None
+
+
+def _lower_set(names) -> set:
+    return {n.lower() for n in (names or [])}
+
+
+class PpeAbsenceCheck:
+    """Template: person without required PPE, or explicit negative class hit."""
+
+    def __call__(
+        self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
+        timestamp: float,
+    ) -> Optional[Violation]:
+        p = rule.params or {}
+        person_classes = _lower_set(p.get("person_classes", ["person"]))
+        required = _lower_set(p.get("required_classes", []))
+        absence = _lower_set(p.get("absence_classes", []))
+        coverage_ratio = float(p.get("coverage_ratio", 0.5))
+
+        persons = [d for d in detections if d.class_name.lower() in person_classes]
+        if not persons:
+            return None
+
+        # Definite violation: model detected an explicit absence class.
+        for det in detections:
+            if det.class_name.lower() in absence:
+                return self._violation(camera_id, rule, det, timestamp)
+
+        # Otherwise any person not covered by a required item is a violation.
+        items = [d for d in detections if d.class_name.lower() in required]
+        for person in persons:
+            if not self._bbox_covers_person(person, items, coverage_ratio):
+                return self._violation(camera_id, rule, person, timestamp)
+        return None
+
+    @staticmethod
+    def _bbox_covers_person(
+        person: Detection, item_boxes: List[Detection], ratio: float
+    ) -> bool:
+        """True if any item bbox overlaps the person bbox significantly
+        (more than ``ratio`` of the item box inside the person box)."""
+        if not item_boxes:
+            return False
+        px1, py1, px2, py2 = person.bbox
+        for item in item_boxes:
+            ox1, oy1, ox2, oy2 = item.bbox
+            overlap_x1 = max(px1, ox1)
+            overlap_y1 = max(py1, oy1)
+            overlap_x2 = min(px2, ox2)
+            overlap_y2 = min(py2, oy2)
+            if overlap_x2 > overlap_x1 and overlap_y2 > overlap_y1:
+                overlap_area = (overlap_x2 - overlap_x1) * (overlap_y2 - overlap_y1)
+                item_area = max((ox2 - ox1) * (oy2 - oy1), 1)
+                if overlap_area / item_area > ratio:
+                    return True
+        return False
+
+    @staticmethod
+    def _violation(camera_id, rule, det, timestamp) -> Violation:
+        return Violation(
+            camera_id=camera_id,
+            rule_id=rule.id,
+            rule_name=rule.name,
+            description=rule.description,
+            confidence=det.confidence,
+            severity=rule.severity,
+            timestamp=timestamp,
+            bbox=det.bbox,
+        )
+
+
+class PresenceNearPersonCheck:
+    """Template: trigger object overlapping a person box (smoking, cigarette...)."""
+
+    def __call__(
+        self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
+        timestamp: float,
+    ) -> Optional[Violation]:
+        p = rule.params or {}
+        trigger_classes = _lower_set(p.get("trigger_classes", []))
+        person_classes = _lower_set(p.get("person_classes", ["person"]))
+        margin = float(p.get("overlap_margin", 0.2))
+        min_conf = float(p.get("min_confidence", 0.0))
+
+        triggers = [
+            d for d in detections
+            if d.class_name.lower() in trigger_classes and d.confidence >= min_conf
+        ]
+        if not triggers:
+            return None
+        persons = [d for d in detections if d.class_name.lower() in person_classes]
+        if not persons:
+            return None
+
+        # Only accept triggers that actually overlap a person box; this
+        # ignores background false positives (objects on desks etc.).
+        best = None
+        for t in triggers:
+            if not any(
+                self._bboxes_overlap(t.bbox, pers.bbox, margin=margin)
+                for pers in persons
+            ):
+                continue
+            if best is None or t.confidence > best.confidence:
+                best = t
+        if best is None:
+            return None
+
+        return Violation(
+            camera_id=camera_id,
+            rule_id=rule.id,
+            rule_name=rule.name,
+            description=rule.description,
+            confidence=best.confidence,
+            severity=rule.severity,
+            timestamp=timestamp,
+            bbox=best.bbox,
+        )
+
+    @staticmethod
+    def _bboxes_overlap(a: tuple, b: tuple, margin: float = 0.0) -> bool:
+        """True if box a overlaps box b (b expanded by margin fraction of size)."""
+        ax1, ay1, ax2, ay2 = a
+        bx1, by1, bx2, by2 = b
+        mx = (bx2 - bx1) * margin
+        my = (by2 - by1) * margin
+        return ax1 < bx2 + mx and ax2 > bx1 - mx and ay1 < by2 + my and ay2 > by1 - my
+
+
+RULE_TEMPLATES = {
+    TEMPLATE_PPE_ABSENCE: PpeAbsenceCheck(),
+    TEMPLATE_PRESENCE_NEAR_PERSON: PresenceNearPersonCheck(),
+}
+
+
+class BehaviorAnalyzer:
+    """Evaluates detections against the enabled rules for each camera."""
+
+    def __init__(self, settings: dict, config_dir: str = "config"):
+        self._logger = get_logger("analyzer")
+
+        alert_cfg = settings.get("alert", {})
+        self._cooldown = alert_cfg.get("cooldown_seconds", 30)
+
+        self._rules = get_rules_store(config_dir)
+
+        # Cooldown tracking: (camera_id, rule_id) -> last alert timestamp
+        self._last_alert: Dict[tuple, float] = {}
+        self._lock = threading.Lock()
+
+    # ---------- cooldown ----------
+
+    def _in_cooldown(self, camera_id: str, rule_id: int, timestamp: float) -> bool:
+        key = (camera_id, rule_id)
+        last_time = self._last_alert.get(key)
+        if last_time is None:
+            return False
+        return (timestamp - last_time) < self._cooldown
+
+    def all_in_cooldown(
+        self, camera_id: str, rules: List[RuleDefinition], timestamp: float
+    ) -> bool:
+        """True when every candidate rule is in cooldown (detection can be skipped)."""
+        return all(self._in_cooldown(camera_id, r.id, timestamp) for r in rules)
+
+    # ---------- main entry ----------
+
+    def analyze_frame(
+        self,
+        camera_id: str,
+        rules: List[RuleDefinition],
+        detections: List[Detection],
+        timestamp: float,
+    ) -> List[Violation]:
+        """Evaluate the given (enabled) rules for one camera frame."""
+        violations = []
+        for rule in rules:
+            check = RULE_TEMPLATES.get(rule.template)
+            if check is None:
+                continue
+            if self._in_cooldown(camera_id, rule.id, timestamp):
+                continue
+
+            v = check(camera_id, rule, detections, timestamp)
+            if v is not None:
+                violations.append(v)
+                with self._lock:
+                    self._last_alert[(camera_id, rule.id)] = timestamp
+        return violations

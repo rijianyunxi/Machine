@@ -1,0 +1,48 @@
+rules:
+- id: 1
+  name: no_safety_helmet
+  description: Worker without safety helmet
+  template: ppe_absence
+  models:
+  - ppe
+  severity: 3
+  enabled: true
+  params:
+    person_classes:
+    - person
+    required_classes:
+    - hardhat
+    absence_classes:
+    - no-hardhat
+    coverage_ratio: 0.5
+- id: 13
+  name: smoking_no_fire_zone
+  description: Smoking detected in no-fire zone
+  template: presence_near_person
+  models:
+  - smoking
+  severity: 4
+  enabled: true
+  params:
+    trigger_classes:
+    - cigarette
+    - smoking
+    person_classes:
+    - person
+    overlap_margin: 0.2
+    min_confidence: 0.0
+- id: 14
+  name: person_holding_cigarette
+  description: Person holding/with cigarette in no-fire zone
+  template: presence_near_person
+  models:
+  - smoking
+  severity: 3
+  enabled: true
+  params:
+    trigger_classes:
+    - cigarette
+    person_classes:
+    - person
+    overlap_margin: 0.1
+    min_confidence: 0.0

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}日志{% endblock %}
+{% block subtitle %}<p class="page-sub">实时滚动查看检测系统日志</p>{% endblock %}
+{% block actions %}
+<label style="display:flex;align-items:center;gap:8px;color:var(--text);margin:0;cursor:pointer">
+  <input type="checkbox" id="auto" checked> 自动刷新
+</label>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="toolbar" style="margin-bottom:14px">
+    <select id="f-level" style="min-width:130px">
+      <option value="">全部级别</option>
+      <option>DEBUG</option><option>INFO</option>
+      <option>WARNING</option><option>ERROR</option><option>CRITICAL</option>
+    </select>
+    <select id="f-tail" style="min-width:150px">
+      <option value="500" selected>最近 500 行</option>
+      <option value="2000">最近 2000 行</option>
+      <option value="5000">最近 5000 行</option>
+    </select>
+    <button class="mini ghost" onclick="refresh()">刷新</button>
+  </div>
+  <pre class="log" id="log">加载中…</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refresh() {
+  const level = document.getElementById("f-level").value;
+  const tail = document.getElementById("f-tail").value;
+  const data = await api(`/api/logs?tail=${tail}` + (level ? `&level=${level}` : ""));
+  const el = document.getElementById("log");
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.innerHTML = data.lines.map(l => {
+    const cls = l.includes("[ERROR]") || l.includes("[CRITICAL]") ? "ERROR"
+      : l.includes("[WARNING]") ? "WARN" : l.includes("[INFO]") ? "INFO" : "";
+    return `<div class="${cls}">${esc(l)}</div>`;
+  }).join("") || "暂无日志";
+  if (atBottom || document.getElementById("auto").checked) el.scrollTop = el.scrollHeight;
+}
+setInterval(() => { if (document.getElementById("auto").checked) refresh(); }, 2000);
+refresh();
+</script>
+{% endblock %}

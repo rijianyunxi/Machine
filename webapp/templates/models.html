@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}模型管理{% endblock %}
+{% block subtitle %}<p class="page-sub">上传 .pt → 后台校验 → 注册 → 启用热加载；阈值改动即时生效</p>{% endblock %}
+
+{% block content %}
+<div class="grid row2">
+  <div class="card">
+    <div class="card-title">已注册模型</div>
+    <div id="models"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">模型文件</div>
+    <div class="banner" style="margin-bottom:12px">⚠ .pt 为可执行 pickle，仅导入可信来源的模型；上限 200MB</div>
+    <div class="toolbar" style="margin-bottom:14px">
+      <input type="file" id="file" accept=".pt" style="flex:1;min-width:200px">
+      <button id="up-btn" onclick="upload(this)">上传</button>
+    </div>
+    <div class="table-wrap"><table style="min-width:0">
+      <tbody id="files"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div class="modal-mask" id="reg-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-h"><h3>注册为模型实例</h3>
+      <button class="modal-x" onclick="closeReg()">✕</button></div>
+    <div class="modal-b">
+      <label>模型名称（字母 / 数字 / 下划线 / 连字符）</label>
+      <input id="r-name" class="w320" placeholder="yolov8-ppe-v2">
+      <p class="muted" id="r-file" style="margin-top:8px"></p>
+      <label>置信度覆盖（可选，0 ~ 1）</label>
+      <input id="r-conf" class="w240" type="number" step="0.05" min="0" max="1">
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="r-enabled"> 注册后立即启用（热加载）
+      </label>
+    </div>
+    <div class="modal-f">
+      <button class="ghost" onclick="closeReg()">取消</button>
+      <button onclick="doRegister(this)">注册</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let files = [], models = [], regFile = null;
+
+function render({ models: ms, files: fs }) {
+  models = ms; files = fs;
+  document.getElementById("models").innerHTML = ms.map(m => `
+    <div class="model-card">
+      <div class="head">
+        <b>${esc(m.name)}</b>
+        ${m.loaded ? badge("已加载 · " + (m.device || "?"), "green")
+                   : (m.config_enabled ? badge("加载中 / 失败", "yellow") : badge("已停用"))}
+      </div>
+      <div class="meta mono">${esc(m.path)} ${m.file_exists ? "" : badge("文件缺失", "red")}</div>
+      ${m.confidence_override != null
+        ? `<div class="meta">置信度覆盖：<span class="mono">${m.confidence_override}</span></div>` : ""}
+      <div class="meta">类别 ${Object.keys(m.classes || {}).length}：
+        ${Object.entries(m.classes || {}).slice(0, 12)
+          .map(([id, name]) => `<span class="chip plain">${id}:${esc(name)}</span>`).join(" ")
+          || "—"}
+        ${Object.keys(m.classes || {}).length > 12 ? `<span class="muted">…</span>` : ""}</div>
+      <div class="ops">
+        <label style="color:var(--muted)">conf</label>
+        <input class="mini" style="width:76px" id="conf-${esc(m.name)}" type="number"
+          step="0.05" min="0" max="1" value="${m.confidence ?? ""}">
+        <button class="mini" onclick="saveThreshold('${esc(m.name)}', this)">保存阈值</button>
+        <button class="mini ghost" onclick="toggle('${esc(m.name)}', ${!m.config_enabled}, this)">
+          ${m.config_enabled ? "停用" : "启用"}</button>
+        <button class="mini ghost" onclick="reload('${esc(m.name)}', this)">重载</button>
+        <button class="mini danger" onclick="unregister('${esc(m.name)}', this)">注销</button>
+      </div>
+    </div>`).join("") || `<div class="empty"><p>尚未注册模型</p></div>`;
+
+  document.getElementById("files").innerHTML = fs.map(f => `
+    <tr><td class="mono">${esc(f.file)}<div class="muted" style="font-size:11px">${f.size_mb} MB</div></td>
+      <td>${f.validation.status === "有效"
+          ? badge(`有效 · ${Object.keys(f.validation.classes || {}).length} 类`, "green")
+          : f.validation.status === "无效" ? badge("无效", "red") : badge(f.validation.status, "yellow")}</td>
+      <td style="text-align:right">${f.registered_as
+        ? badge("已注册", "blue")
+        : `<button class="mini" onclick="openReg('${esc(f.file)}')">注册</button>
+           <button class="mini danger" onclick="delFile('${esc(f.file)}', this)">删除</button>`}</td>
+    </tr>`).join("") || `<tr><td><div class="empty"><p>models/ 目录暂无 .pt 文件</p></div></td></tr>`;
+}
+
+async function upload(btn) {
+  const input = document.getElementById("file");
+  if (!input.files.length) return toast("请先选择 .pt 文件", false);
+  const fd = new FormData();
+  fd.append("file", input.files[0]);
+  await withLoading(btn, async () => {
+    const res = await fetch("/api/models/files", { method: "POST", body: fd });
+    if (!res.ok) return toast((await res.json()).detail || "上传失败", false);
+    toast("上传成功，开始后台校验");
+    input.value = ""; refresh();
+    setTimeout(refresh, 2500);
+  });
+}
+
+function openReg(file) {
+  regFile = file;
+  const v = files.find(f => f.file === file)?.validation || {};
+  document.getElementById("r-file").textContent =
+    `文件：${file} · 校验：${v.status}` +
+    (v.classes ? ` · ${Object.keys(v.classes).length} 类` : "") +
+    (v.status !== "有效" ? "（建议等待校验通过后再启用）" : "");
+  document.getElementById("reg-modal").classList.add("open");
+}
+function closeReg() { document.getElementById("reg-modal").classList.remove("open"); }
+
+async function doRegister(btn) {
+  const conf = document.getElementById("r-conf").value;
+  await withLoading(btn, async () => {
+    try {
+      const body = {
+        name: document.getElementById("r-name").value.trim(),
+        file: regFile,
+        enabled: document.getElementById("r-enabled").checked,
+        confidence_override: conf === "" ? null : +conf,
+      };
+      await api("/api/models", { method: "POST", body });
+      toast("已注册" + (body.enabled ? "，后台加载中" : "（未启用）"));
+      closeReg(); refresh();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+async function saveThreshold(name, btn) {
+  const v = document.getElementById("conf-" + name).value;
+  await withLoading(btn, async () => {
+    try {
+      await api(`/api/models/${name}`, { method: "PUT", body: { confidence_override: +v } });
+      toast("阈值已保存并热生效");
+    } catch (e) { toast(e.message, false); }
+    refresh();
+  });
+}
+async function toggle(name, enable, btn) {
+  await withLoading(btn, async () => {
+    try { await api(`/api/models/${name}`, { method: "PUT", body: { enabled: enable } });
+          toast(enable ? "已启用，后台加载中" : "已停用"); }
+    catch (e) { toast(e.message, false); }
+    refresh();
+  });
+}
+async function reload(name, btn) {
+  await withLoading(btn, async () => {
+    try { await api(`/api/models/${name}/reload`, { method: "POST" }); toast("重载中…"); }
+    catch (e) { toast(e.message, false); }
+    setTimeout(refresh, 1500);
+  });
+}
+async function unregister(name, btn) {
+  if (!await confirmDialog(`注销模型 ${name}？模型文件不会被删除。`)) return;
+  await withLoading(btn, async () => {
+    try { await api(`/api/models/${name}`, { method: "DELETE" }); toast("已注销"); refresh(); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+async function delFile(file, btn) {
+  if (!await confirmDialog(`删除模型文件 ${file}？`)) return;
+  await withLoading(btn, async () => {
+    try { await api(`/api/models/files/${encodeURIComponent(file)}`, { method: "DELETE" }); toast("已删除"); refresh(); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+
+const refresh = () => api("/api/models").then(render).catch(console.error);
+refresh();
+setTimeout(refresh, 3000);
+</script>
+{% endblock %}

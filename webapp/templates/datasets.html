@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}数据集{% endblock %}
+{% block subtitle %}<p class="page-sub">YOLO 格式数据集：新建 / 导入图片 / 从快照导入 / AI 批量预标注</p>{% endblock %}
+{% block actions %}
+<button onclick="openCreate(this)">＋ 新建数据集</button>
+{% endblock %}
+
+{% block content %}
+<div class="grid cards" id="list"></div>
+
+<div class="modal-mask" id="create-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-h"><h3>新建数据集</h3>
+      <button class="modal-x" onclick="closeCreate()">✕</button></div>
+    <div class="modal-b">
+      <label>数据集名称（字母/数字/下划线/连字符）</label>
+      <input id="c-name" class="w320" placeholder="site_ppe_v1">
+      <label>类别列表（逗号分隔，顺序即类别 ID：0,1,2…）</label>
+      <input id="c-classes" style="width:100%"
+        placeholder="person, no-hardhat, cigarette">
+      <p class="muted" style="margin-top:10px">创建后可在「在线标注」页补充图片与标注。</p>
+    </div>
+    <div class="modal-f">
+      <button class="ghost" onclick="closeCreate()">取消</button>
+      <button onclick="create(this)">创建</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="snap-modal">
+  <div class="modal" style="width:440px">
+    <div class="modal-h"><h3>从快照导入</h3>
+      <button class="modal-x" onclick="closeSnap()">✕</button></div>
+    <div class="modal-b">
+      <p class="muted" id="snap-ds" style="margin-bottom:6px"></p>
+      <label>日期（留空 = 最近日期优先）</label>
+      <input id="snap-date" class="w240" placeholder="2026-08-28">
+      <label>最多导入张数</label>
+      <input id="snap-limit" class="w240" type="number" value="200">
+    </div>
+    <div class="modal-f">
+      <button class="ghost" onclick="closeSnap()">取消</button>
+      <button onclick="doImportSnap(this)">导入</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let datasets = [], snapTarget = null;
+
+function render() {
+  document.getElementById("list").innerHTML = datasets.map(d => `
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">
+        <b style="font-size:14px">${esc(d.name)}</b>
+        ${d.images ? badge(`${d.labeled}/${d.images} 已标`, d.labeled === d.images ? "green" : "yellow")
+                   : badge("空数据集")}
+      </div>
+      <div class="muted" style="margin-bottom:8px">类别 ${d.classes.length}：
+        ${d.classes.map((c, i) => `<span class="chip blue plain">${i}:${esc(c)}</span>`).join(" ") || "—"}</div>
+      <div class="muted mono" style="font-size:11px">${d.images} 张图片</div>
+      <div class="toolbar" style="margin-top:12px">
+        <a class="btn mini" href="/annotate?ds=${esc(d.name)}"
+           style="padding:4.5px 11px;font-size:12px;border-radius:7px">打开标注</a>
+        <label class="mini ghost" style="padding:4.5px 11px;cursor:pointer">
+          导入图片<input type="file" multiple accept=".jpg,.jpeg,.png,.webp"
+            style="display:none" onchange="uploadImages('${esc(d.name)}', this)"></label>
+        <button class="mini ghost" onclick="openSnap('${esc(d.name)}')">从快照导入</button>
+        <button class="mini ghost" onclick="prelabel('${esc(d.name)}', this)">AI 预标注</button>
+        <button class="mini danger" onclick="del('${esc(d.name)}', this)">删除</button>
+      </div>
+    </div>`).join("")
+    || `<div class="card" style="grid-column:1/-1"><div class="empty">
+        <p>还没有数据集，点右上角「新建数据集」开始</p></div></div>`;
+}
+
+function openCreate() {
+  document.getElementById("create-modal").classList.add("open");
+}
+function closeCreate() { document.getElementById("create-modal").classList.remove("open"); }
+
+async function create(btn) {
+  const classes = document.getElementById("c-classes").value
+    .split(",").map(x => x.trim()).filter(Boolean);
+  await withLoading(btn, async () => {
+    try {
+      await api("/api/datasets", { method: "POST", body: {
+        name: document.getElementById("c-name").value.trim(), classes } });
+      toast("已创建"); closeCreate(); refresh();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+async function uploadImages(name, input) {
+  if (!input.files.length) return;
+  const fd = new FormData();
+  for (const f of input.files) fd.append("images", f);
+  const res = await fetch(`/api/datasets/${name}/images`, { method: "POST", body: fd });
+  if (!res.ok) return toast((await res.json()).detail || "导入失败", false);
+  const d = await res.json();
+  toast(`已导入 ${d.added} 张`);
+  refresh();
+}
+
+function openSnap(name) {
+  snapTarget = name;
+  document.getElementById("snap-ds").textContent = `导入到数据集：${name}`;
+  document.getElementById("snap-modal").classList.add("open");
+}
+function closeSnap() { document.getElementById("snap-modal").classList.remove("open"); }
+
+async function doImportSnap(btn) {
+  await withLoading(btn, async () => {
+    try {
+      const r = await api(`/api/datasets/${snapTarget}/import_snapshots`,
+        { method: "POST", body: {
+            date: document.getElementById("snap-date").value.trim() || null,
+            limit: +document.getElementById("snap-limit").value || 200 } });
+      toast(`已导入 ${r.imported} 张快照`);
+      closeSnap(); refresh();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+async function prelabel(name, btn) {
+  try {
+    await api(`/api/datasets/${name}/prelabel`, { method: "POST",
+      body: { model: "", conf: 0.4, only_unlabeled: true, limit: 200 } });
+    toast("AI 预标注已启动，可离开本页（后台执行）");
+    pollPrelabel(name, btn);
+  } catch (e) { toast(e.message, false); }
+}
+
+function pollPrelabel(name, btn) {
+  const timer = setInterval(async () => {
+    const s = await api(`/api/datasets/${name}/prelabel_status`);
+    if (btn) btn.textContent = `预标注 ${s.done}/${s.total}`;
+    if (!s.running) {
+      clearInterval(timer);
+      if (btn) btn.textContent = "AI 预标注";
+      if (s.error) toast(s.error, false);
+      else if (s.total) toast(`预标注完成：${s.done}/${s.total} 张`);
+      refresh();
+    }
+  }, 1500);
+}
+
+async function del(name, btn) {
+  if (!await confirmDialog(`删除数据集 ${name}？图片与标注将一并删除，不可恢复！`)) return;
+  await withLoading(btn, async () => {
+    try { await api(`/api/datasets/${encodeURIComponent(name)}`, { method: "DELETE" }); toast("已删除"); refresh(); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+
+const refresh = () => api("/api/datasets").then(r => { datasets = r.datasets; render(); }).catch(console.error);
+refresh();
+</script>
+{% endblock %}

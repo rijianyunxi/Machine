@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block content %}
+<div style="min-height:70vh;display:grid;place-items:center">
+  <div class="card" style="width:380px;padding:30px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div class="logo" style="width:48px;height:48px;border-radius:13px;margin:0 auto 12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#04121f">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h2 style="font-size:17px">Machine</h2>
+      <p class="muted" style="font-size:12.5px;margin-top:4px">安全行为检测面板 · 请登录以继续</p>
+    </div>
+    <label>用户名</label>
+    <input id="l-user" style="width:100%" placeholder="admin" autocomplete="username">
+    <label>密码</label>
+    <input id="l-pass" style="width:100%" type="password" placeholder="••••••••" autocomplete="current-password">
+    <p class="muted" id="l-err" style="color:var(--red);margin-top:10px;display:none"></p>
+    <button style="width:100%;margin-top:18px" onclick="doLogin(this)">登 录</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function doLogin(btn) {
+  const err = document.getElementById("l-err");
+  err.style.display = "none";
+  await withLoading(btn, async () => {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("l-user").value.trim(),
+        password: document.getElementById("l-pass").value,
+      }),
+    });
+    if (res.ok) { location.href = "/dashboard"; return; }
+    err.textContent = (await res.json()).detail || "登录失败";
+    err.style.display = "block";
+  });
+}
+document.getElementById("l-pass").addEventListener("keydown",
+  e => { if (e.key === "Enter") doLogin(document.querySelector("button")); });
+</script>
+{% endblock %}

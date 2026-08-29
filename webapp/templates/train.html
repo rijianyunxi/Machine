@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}模型训练{% endblock %}
+{% block subtitle %}<p class="page-sub">子进程训练，崩溃不影响检测与面板；每个 epoch 解析一次进度</p>{% endblock %}
+
+{% block content %}
+<div class="grid row2">
+  <div class="card">
+    <div class="card-title">启动训练</div>
+    <label>数据集（YOLO 格式，来自「数据集」页）</label>
+    <select id="f-ds" style="width:100%"></select>
+    <label>基础模型（models/ 目录下的 .pt，或官方名）</label>
+    <select id="f-model" style="width:100%"></select>
+    <div class="form-grid">
+      <div><label>轮数 epochs</label><input id="f-epochs" type="number" value="50" min="1"></div>
+      <div><label>图片尺寸 imgsz</label><input id="f-imgsz" type="number" value="640" min="32"></div>
+      <div><label>batch</label><input id="f-batch" type="number" value="8" min="1"></div>
+      <div><label>设备 device</label>
+        <select id="f-device" style="width:100%">
+          <option value="auto" selected>auto</option><option value="cpu">cpu</option>
+          <option value="mps">mps</option><option value="cuda:0">cuda:0</option>
+        </select></div>
+    </div>
+    <label>任务名（默认 数据集_epochs）</label>
+    <input id="f-name" class="w320" placeholder="site_ppe_v1_50ep">
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button id="start-btn" onclick="start(this)">▶ 开始训练</button>
+      <button class="danger" onclick="stop(this)">■ 停止</button>
+    </div>
+    <p class="muted" style="margin-top:12px">提示：demo 数据集验证集=训练集，mAP 仅作参考；
+      一次只跑一个训练任务。</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">训练状态 <span class="muted" id="st-name"></span></div>
+    <div id="status">尚未启动训练</div>
+    <div class="card-title" style="margin-top:16px;margin-bottom:8px">日志（尾部）</div>
+    <pre class="log" id="train-log" style="max-height:200px">—</pre>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-title">历史产物（best.pt 可注册为模型）</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>任务</th><th>best.pt</th><th>大小</th><th style="text-align:right">操作</th></tr></thead>
+    <tbody id="runs"></tbody>
+  </table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pollTimer = null;
+
+async function init() {
+  const [dsList, models, runs] = await Promise.all([
+    api("/api/datasets"), api("/api/models"), api("/api/train/runs")]);
+  document.getElementById("f-ds").innerHTML = dsList.datasets.map(d =>
+    `<option value="${esc(d.name)}">${esc(d.name)}（${d.images} 张）</option>`).join("")
+    || "<option value=''>无数据集，请先创建</option>";
+  document.getElementById("f-model").innerHTML = models.files.map(f =>
+    `<option value="${esc(f.file)}">${esc(f.file)}</option>`).join("")
+    + "<option value='yolov8n.pt'>yolov8n.pt（官方预训练）</option>";
+  renderRuns(runs.runs);
+  pollStatus();
+  if (!pollTimer) pollTimer = setInterval(pollStatus, 3000);
+}
+
+function renderRuns(runs) {
+  document.getElementById("runs").innerHTML = runs.map(r => `
+    <tr><td class="mono">${esc(r.name)}</td>
+      <td class="mono" style="font-size:11px">${esc(r.best)}</td>
+      <td>${r.size_mb} MB</td>
+      <td style="text-align:right">
+        <button class="mini" onclick="register('${esc(r.name)}', this)">注册为模型</button>
+      </td></tr>`).join("")
+    || `<tr><td colspan="4"><div class="empty"><p>暂无训练产物</p></div></td></tr>`;
+}
+
+async function start(btn) {
+  await withLoading(btn, async () => {
+    try {
+      const r = await api("/api/train/start", { method: "POST", body: {
+        dataset: document.getElementById("f-ds").value,
+        base_model: document.getElementById("f-model").value,
+        epochs: +document.getElementById("f-epochs").value,
+        imgsz: +document.getElementById("f-imgsz").value,
+        batch: +document.getElementById("f-batch").value,
+        device: document.getElementById("f-device").value,
+        name: document.getElementById("f-name").value.trim(),
+      }});
+      toast(`训练已启动：${r.name}（PID ${r.pid}）`);
+      pollStatus();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+
+async function stop(btn) {
+  await withLoading(btn, async () => {
+    try { const r = await api("/api/train/stop", { method: "POST" });
+          toast(r.stopped ? "已发送停止信号" : "当前没有运行中的训练"); }
+    catch (e) { toast(e.message, false); }
+  });
+}
+
+async function pollStatus() {
+  try {
+    const s = await api("/api/train/status");
+    const el = document.getElementById("status");
+    document.getElementById("st-name").textContent = s.name ? `· ${s.name}` : "";
+    if (s.state === "idle") { el.innerHTML = '<p class="muted">尚未启动训练</p>'; return; }
+    const pct = s.epoch && s.epochs_total
+      ? Math.min(100, Math.round(s.epoch / s.epochs_total * 100)) : 0;
+    const stateChip = { running: badge("训练中", "blue"), completed: badge("已完成", "green"),
+                        failed: badge("失败", "red") }[s.state] || badge(s.state);
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+        ${stateChip}
+        <span class="muted">epoch ${s.epoch ?? 0}/${s.epochs_total ?? "?"}</span>
+        ${s.mAP50 != null ? `<span class="muted">mAP50 <b style="color:var(--text)">${s.mAP50}</b></span>` : ""}
+        ${s.mAP50_95 != null ? `<span class="muted">mAP50-95 <b style="color:var(--text)">${s.mAP50_95}</b></span>` : ""}
+      </div>
+      <div style="height:8px;background:var(--surface-3);border-radius:6px;overflow:hidden;margin-bottom:10px">
+        <div style="height:100%;width:${pct}%;border-radius:6px;
+          background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .5s"></div>
+      </div>
+      ${s.best_path ? `<div class="muted" style="margin-bottom:8px">best.pt：${stateChip === badge("已完成", "green") || s.state === "completed"
+        ? `<button class="mini" onclick="register('${esc(s.name)}', this)">注册为模型</button>` : esc(s.best_path)}</div>` : ""}
+    `;
+    if (s.log_tail?.length) {
+      document.getElementById("train-log").textContent = s.log_tail.join("\n");
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function register(run, btn) {
+  let modelName = prompt("注册为模型（名称，字母/数字/连字符）：", `trained-${run}`);
+  if (!modelName) return;
+  await withLoading(btn, async () => {
+    try {
+      await api("/api/train/register", { method: "POST",
+        body: { run, model_name: modelName } });
+      toast("已复制 best.pt 并注册（默认停用，到模型管理页启用）");
+      init();
+    } catch (e) { toast(e.message, false); }
+  });
+}
+init();
+</script>
+{% endblock %}
