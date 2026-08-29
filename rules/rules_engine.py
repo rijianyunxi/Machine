@@ -436,13 +436,15 @@ class RulesStore:
                 break
         if target is None:
             raise ValueError(f"规则 {rule_id} 不存在")
+        # Validate before mutating: ``target`` is shared with the cache, so a
+        # failed update must not leave a half-applied rule behind.
+        if "template" in fields and fields["template"] not in \
+                self._templates.get_all():
+            raise ValueError(f"未知模板类型: {fields['template']}")
         for key in ("name", "description", "template", "models", "params",
                     "severity", "enabled"):
             if key in fields:
                 setattr(target, key, fields[key])
-        if "template" in fields and fields["template"] not in \
-                self._templates.get_all():
-            raise ValueError(f"未知模板类型: {fields['template']}")
         self._save(rules)
         return target
 

@@ -554,7 +554,7 @@ pre.log .INFO { color: #64748b; }
 .tpl-head h3 { margin: 0; font-size: 14.5px; }
 .tpl-param-grid {
   display: grid;
-  grid-template-columns: 110px 92px 1fr 74px 74px 1.5fr 58px 30px;
+  grid-template-columns: 128px 92px 1fr 74px 74px 1.5fr 58px 30px;
   gap: 6px; align-items: center; margin-bottom: 6px;
 }
 .tpl-param-grid.header { margin-bottom: 8px; }
