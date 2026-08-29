@@ -1,0 +1,43 @@
+2026-08-28 22:45:52 [INFO] [machine_vision] ============================================================
+2026-08-28 22:45:52 [INFO] [machine_vision] Machine Vision Unsafe Behavior Detection System
+2026-08-28 22:45:52 [INFO] [machine_vision] ============================================================
+2026-08-28 22:45:52 [INFO] [machine_vision] Loading detection models...
+2026-08-28 22:45:53 [INFO] [multi_detector] Apple MPS detected, using mps
+2026-08-28 22:45:53 [INFO] [detector.ppe] Loading model [ppe]: models/yolov8-ppe.pt
+2026-08-28 22:45:53 [INFO] [detector.ppe] Model [ppe] loaded: 10 classes: ['Hardhat', 'Mask', 'NO-Hardhat', 'NO-Mask', 'NO-Safety Vest', 'Person', 'Safety Cone', 'Safety Vest', 'machinery', 'vehicle']
+2026-08-28 22:45:53 [INFO] [detector.smoking] Loading model [smoking]: models/yolov8-smoking.pt
+2026-08-28 22:45:53 [INFO] [detector.smoking] Model [smoking] loaded: 2 classes: ['cigarette', 'smoking']
+2026-08-28 22:45:53 [INFO] [multi_detector] Loaded 2 model(s): ['ppe', 'smoking']
+2026-08-28 22:45:53 [INFO] [machine_vision] Active models: ['ppe', 'smoking']
+2026-08-28 22:45:53 [INFO] [database] Database initialized: storage/alerts.db
+2026-08-28 22:45:53 [INFO] [panel.server] Panel starting on http://0.0.0.0:8000
+2026-08-28 22:45:53 [INFO] [machine_vision] Active rules: 3
+2026-08-28 22:45:53 [INFO] [machine_vision]   R01: no_safety_helmet [ppe] severity=3
+2026-08-28 22:45:53 [INFO] [machine_vision]   R13: smoking_no_fire_zone [ppe] severity=4
+2026-08-28 22:45:53 [INFO] [machine_vision]   R14: person_holding_cigarette [ppe] severity=3
+2026-08-28 22:45:53 [INFO] [machine_vision] Starting 4 enabled cameras (total configured: 4)
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_1] Reconnecting...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_1] Capture thread started: CAM_PUFIN_1 (rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=1&subtype=0)
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_1] Connecting to rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=1&subtype=0...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_2] Reconnecting...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_2] Capture thread started: CAM_PUFIN_2 (rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=2&subtype=0)
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_2] Connecting to rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=2&subtype=0...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_3] Reconnecting...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_3] Connecting to rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=3&subtype=0...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_3] Capture thread started: CAM_PUFIN_3 (rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=3&subtype=0)
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_4] Reconnecting...
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_4] Capture thread started: CAM_PUFIN_4 (rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=4&subtype=0)
+2026-08-28 22:45:53 [INFO] [camera.CAM_PUFIN_4] Connecting to rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=4&subtype=0...
+2026-08-28 22:45:53 [INFO] [camera_manager] Started 4 camera streams
+2026-08-28 22:45:53 [INFO] [machine_vision] Waiting for camera connections...
+2026-08-28 22:45:56 [INFO] [machine_vision] Camera connection status: 0/4 connected
+2026-08-28 22:45:56 [INFO] [machine_vision] Starting main processing loop...
+2026-08-28 22:45:56 [INFO] [machine_vision] Press Ctrl+C to stop
+2026-08-28 22:45:56 [INFO] [machine_vision] ------------------------------------------------------------
+
+2026-08-28 22:46:07 [INFO] [machine_vision] Shutting down...
+2026-08-28 22:46:07 [INFO] [panel.server] Panel stopped
+2026-08-28 22:46:07 [INFO] [camera_manager] Stopping all camera streams...
+2026-08-28 22:46:12 [INFO] [camera.CAM_PUFIN_1] Capture thread stopped: CAM_PUFIN_1
+2026-08-28 22:46:17 [INFO] [camera.CAM_PUFIN_2] Capture thread stopped: CAM_PUFIN_2
+

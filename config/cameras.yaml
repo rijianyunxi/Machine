@@ -1,0 +1,120 @@
+# ============================================================
+# Camera Channel Configuration
+# ============================================================
+# Each camera defines:
+#   id:          Unique camera identifier
+#   name:        Human-readable name
+#   rtsp_url:    RTSP stream URL
+#   enabled:     Whether this camera is active
+#   rules:       List of active detection rule IDs for this camera
+#   zones:       Optional ROI zones for zone-based rules (polygon points)
+#
+# Rule IDs reference:
+#   1  - No safety helmet
+#   2  - No life jacket
+#   3  - No safety harness (scaffold)
+#   4  - Hot work supervisor absence
+#   5  - High-altitude supervisor absence
+#   6  - Walking/working on pipes
+#   7  - No safety harness (high-altitude)
+#   8  - Crossing railings
+#   9  - Electrical work supervisor absence
+#   10 - Confined space supervisor absence
+#   11 - Lifting commander departure
+#   12 - Unauthorized personnel in lifting zone
+#   13 - Smoking in no-fire zone
+# ============================================================
+
+
+
+#   检测规则 rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+cameras:
+  # --- Example: General work site ---
+  # - id: "CAM_001"
+  #   name: "technology  officeech"
+  #   rtsp_url: "rtsp://admin:Pufeng%40803@192.168.1.122:554/Streaming/Channels/101?tcp"
+  #   enabled: true
+  #   rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+  - id: "CAM_PUFIN_1"
+    name: "CAM_PUFIN_1"
+    rtsp_url: "rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=1&subtype=0"
+    enabled: true
+    rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+  - id: "CAM_PUFIN_2"
+    name: "CAM_PUFIN_2"
+    rtsp_url: "rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=2&subtype=0"
+    enabled: true
+    rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+  - id: "CAM_PUFIN_3"
+    name: "CAM_PUFIN_3"
+    rtsp_url: "rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=3&subtype=0"
+    enabled: true
+    rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+  - id: "CAM_PUFIN_4"
+    name: "CAM_PUFIN_4"
+    rtsp_url: "rtsp://admin:pufin@192.168.1.189:554/cam/realmonitor?channel=4&subtype=0"
+    enabled: true
+    rules: [1, 13, 14]  # Helmet, smoking, cigarette-in-hand
+  # - id: "CAM_002"
+  #   name: "Warehouse Loading Dock"
+  #   rtsp_url: "rtsp://192.168.1.102:554/stream1"
+  #   enabled: true
+  #   rules: [1]  # Helmet check
+
+  # # --- Example: Scaffolding area ---
+  # - id: "CAM_003"
+  #   name: "Building A - Scaffold Zone"
+  #   rtsp_url: "rtsp://192.168.1.103:554/stream1"
+  #   enabled: true
+  #   rules: [1, 3]  # Helmet, harness (scaffold)
+
+  # # --- Example: Hot work area ---
+  # - id: "CAM_004"
+  #   name: "Welding Workshop"
+  #   rtsp_url: "rtsp://192.168.1.104:554/stream1"
+  #   enabled: true
+  #   rules: [1, 4, 13]  # Helmet, supervisor absence (hot work), smoking
+
+  # # --- Example: High-altitude work ---
+  # - id: "CAM_005"
+  #   name: "Tower Platform Level 3"
+  #   rtsp_url: "rtsp://192.168.1.105:554/stream1"
+  #   enabled: true
+  #   rules: [1, 5, 6, 7, 8]  # Helmet, supervisor, pipe walk, harness, railing
+
+  # # --- Example: Electrical work area ---
+  # - id: "CAM_006"
+  #   name: "Substation B"
+  #   rtsp_url: "rtsp://192.168.1.106:554/stream1"
+  #   enabled: true
+  #   rules: [1, 9]  # Helmet, supervisor absence (electrical)
+
+  # # --- Example: Confined space ---
+  # - id: "CAM_007"
+  #   name: "Tank Interior Access Point"
+  #   rtsp_url: "rtsp://192.168.1.107:554/stream1"
+  #   enabled: true
+  #   rules: [1, 10]  # Helmet, supervisor absence (confined space)
+
+  # # --- Example: Lifting operations ---
+  # - id: "CAM_008"
+  #   name: "Crane Operating Zone"
+  #   rtsp_url: "rtsp://192.168.1.108:554/stream1"
+  #   enabled: true
+  #   rules: [1, 11, 12]  # Helmet, commander departure, unauthorized entry
+
+  # # --- Example: Waterfront / dock ---
+  # - id: "CAM_009"
+  #   name: "Dock Area - Pier 2"
+  #   rtsp_url: "rtsp://192.168.1.109:554/stream1"
+  #   enabled: true
+  #   rules: [1, 2]  # Helmet, life jacket
+
+  # --- Placeholder for remaining cameras (10-50) ---
+  # Copy the template below and fill in actual values:
+  #
+  # - id: "CAM_XXX"
+  #   name: "Description"
+  #   rtsp_url: "rtsp://IP:554/stream1"
+  #   enabled: true
+  #   rules: [1]

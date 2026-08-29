@@ -1,0 +1,81 @@
+# ============================================================
+# Global Settings
+# ============================================================
+
+# Detection model configuration (multi-model support)
+model:
+  # Common settings for all models
+  confidence_threshold: 0.5
+  iou_threshold: 0.45
+  img_size: 640
+  device: "auto"  # "auto", "cpu", "cuda:0", etc.
+
+  # Model list - load multiple models simultaneously
+  # Each model has: name, path, enabled, rules (optional)
+  models:
+    # PPE detection (helmet, vest, Person, etc.)
+    - name: "ppe"
+      path: "models/yolov8-ppe.pt"
+      enabled: true
+      rules: [1]
+
+    # Smoking detection (cigarette, smoke)
+    - name: "smoking"
+      path: "models/yolov8-smoking.pt"
+      enabled: true
+      confidence_override: 0.6
+      rules: [13]
+
+  # Legacy single-model path (used if models list is empty)
+  # path: "models/yolov8-ppe.pt"
+
+# Video capture configuration
+capture:
+  target_fps: 2
+  reconnect_delay: 5
+  # RTSP streams are drained continuously; this is the number of consecutive
+  # failed reads before forcing a reconnect (with continuous draining this is
+  # reached in ~1s, not ~15s like the old low-FPS sampling loop).
+  max_failures: 5
+  read_timeout: 10
+  # Frames to discard right after (re)connect so the H.264 decoder syncs to a
+  # keyframe before we hand frames to the analyzer.
+  warmup_frames: 5
+  # Reconnect when no frame arrives for this many seconds (safety net).
+  stall_timeout: 15
+
+# Snapshot configuration
+snapshot:
+  save_dir: "storage/snapshots"
+  jpeg_quality: 90
+  annotate: true
+  box_thickness: 2
+  font_scale: 0.6
+  # Snapshot day-directories older than this are auto-deleted (03:00 daily)
+  retention_days: 30
+
+# Alert configuration
+alert:
+  cooldown_seconds: 30
+
+# Database configuration
+database:
+  path: "storage/alerts.db"
+  # Alert rows older than this are auto-deleted
+  retention_days: 180
+
+# Logging configuration
+logging:
+  level: "INFO"
+  file: "logs/machine_vision.log"
+  max_size_mb: 50
+  backup_count: 5
+
+# Web panel configuration (panel.enabled=false to run headless)
+panel:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8000
+  auth_enabled: true
+  username: "admin"
+  password: "admin"

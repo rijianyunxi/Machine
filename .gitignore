@@ -1,44 +1,16 @@
-# Python
+# 仅排除不可入库的环境与缓存（仓库为私有，数据/配置/模型全部入库）
+.venv/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
 *.egg-info/
 dist/
 build/
 .eggs/
 
-# Virtual environment
-venv/
-.venv/
-env/
-
-# IDE
+# IDE / 系统
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# Project specific
-storage/snapshots/
-storage/*.db
-models/*.pt
-models/*.onnx
-*.log
-
-# OS
-Thumbs.db
 .DS_Store
-
-# 训练 / 数据集 / 测试视频
-runs/
-datasets/
-test_videos/
-storage/test_results/
-storage/alerts.db-*
-
-# 真实配置含相机与面板密码，不入库；使用 config.example/ 下的模板
-config/cameras.yaml
-config/settings.yaml
-config/*.bak
-config_test/
+Thumbs.db

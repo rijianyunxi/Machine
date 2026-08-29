@@ -1,0 +1,7 @@
+path: /Users/song/work/Machine/datasets/ppe_test
+train: images/all
+val: images/all
+names:
+  0: person
+  1: no-hardhat
+  2: cigarette

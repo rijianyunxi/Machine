@@ -1,0 +1,41 @@
+2026-08-20 16:04:12 [INFO] [machine_vision] ============================================================
+2026-08-20 16:04:12 [INFO] [machine_vision] Machine Vision Unsafe Behavior Detection System
+2026-08-20 16:04:12 [INFO] [machine_vision] ============================================================
+2026-08-20 16:04:12 [INFO] [machine_vision] Loading detection models...
+2026-08-20 16:04:14 [INFO] [machine_vision] Active models: ['ppe', 'smoking']
+2026-08-20 16:04:14 [INFO] [machine_vision] Available rules: 13
+2026-08-20 16:04:14 [INFO] [machine_vision]   R01: no_safety_helmet [ppe] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R02: no_lifejacket [ppe] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R03: no_harness_scaffold [ppe] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision]   R04: hot_work_supervisor_absence [supervisor_absence] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R05: high_altitude_supervisor_absence [supervisor_absence] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R06: walking_on_pipes [zone_behavior] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision]   R07: no_harness_high_altitude [ppe] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision]   R08: crossing_railings [zone_behavior] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision]   R09: electrical_supervisor_absence [supervisor_absence] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R10: confined_space_supervisor_absence [supervisor_absence] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R11: lifting_commander_departure [supervisor_absence] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision]   R12: unauthorized_personnel_lifting [zone_behavior] severity=3
+2026-08-20 16:04:14 [INFO] [machine_vision]   R13: smoking_no_fire_zone [ppe] severity=4
+2026-08-20 16:04:14 [INFO] [machine_vision] Starting 1 enabled cameras (total configured: 1)
+2026-08-20 16:04:14 [INFO] [machine_vision] Waiting for camera connections...
+2026-08-20 16:04:17 [INFO] [machine_vision] Camera connection status: 1/1 connected
+2026-08-20 16:04:17 [INFO] [machine_vision] Starting main processing loop...
+2026-08-20 16:04:17 [INFO] [machine_vision] Press Ctrl+C to stop
+2026-08-20 16:04:17 [INFO] [machine_vision] ------------------------------------------------------------
+2026-08-20 16:04:20 [WARNING] [machine_vision] VIOLATION [CAM_001] R01 no_safety_helmet (conf=0.29) -> Alert #6, Snapshot: storage/snapshots\2026-08-20\CAM_001_R01_160420_00757.jpg
+2026-08-20 16:04:50 [WARNING] [machine_vision] VIOLATION [CAM_001] R01 no_safety_helmet (conf=0.38) -> Alert #7, Snapshot: storage/snapshots\2026-08-20\CAM_001_R01_160450_52839.jpg
+2026-08-20 16:05:00 [INFO] [machine_vision] Stats: frames=81, violations=2, snapshots=2, uptime=46s, avg_fps=1.8
+2026-08-20 16:06:00 [INFO] [machine_vision] Stats: frames=201, violations=2, snapshots=2, uptime=106s, avg_fps=1.9
+2026-08-20 16:07:00 [INFO] [machine_vision] Stats: frames=321, violations=2, snapshots=2, uptime=166s, avg_fps=1.9
+2026-08-20 16:08:00 [INFO] [machine_vision] Stats: frames=441, violations=2, snapshots=2, uptime=226s, avg_fps=2.0
+2026-08-20 16:09:00 [INFO] [machine_vision] Stats: frames=561, violations=2, snapshots=2, uptime=286s, avg_fps=2.0
+2026-08-20 16:10:00 [INFO] [machine_vision] Stats: frames=681, violations=2, snapshots=2, uptime=346s, avg_fps=2.0
+2026-08-20 16:11:00 [INFO] [machine_vision] Stats: frames=801, violations=2, snapshots=2, uptime=406s, avg_fps=2.0
+2026-08-20 16:12:00 [INFO] [machine_vision] Stats: frames=921, violations=2, snapshots=2, uptime=466s, avg_fps=2.0
+2026-08-20 16:12:38 [WARNING] [machine_vision] VIOLATION [CAM_001] R01 no_safety_helmet (conf=0.29) -> Alert #8, Snapshot: storage/snapshots\2026-08-20\CAM_001_R01_161238_40924.jpg
+2026-08-20 16:13:00 [INFO] [machine_vision] Stats: frames=1041, violations=3, snapshots=3, uptime=526s, avg_fps=2.0
+2026-08-20 16:14:00 [INFO] [machine_vision] Stats: frames=1161, violations=3, snapshots=3, uptime=586s, avg_fps=2.0
+2026-08-20 16:15:00 [INFO] [machine_vision] Stats: frames=1280, violations=3, snapshots=3, uptime=646s, avg_fps=2.0
+2026-08-20 16:16:00 [INFO] [machine_vision] Stats: frames=1400, violations=3, snapshots=3, uptime=706s, avg_fps=2.0
+2026-08-20 16:17:00 [INFO] [machine_vision] Stats: frames=1520, violations=3, snapshots=3, uptime=766s, avg_fps=2.0

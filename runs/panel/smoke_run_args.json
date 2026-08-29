@@ -1,0 +1,1 @@
+{"data": "/Users/song/work/metch-yolo/datasets/ppe_test/dataset.yaml", "model": "/Users/song/work/metch-yolo/models/yolov8n.pt", "epochs": 1, "imgsz": 320, "batch": 2, "device": "cpu", "project": "/Users/song/work/metch-yolo/runs/panel", "name": "smoke_run"}
