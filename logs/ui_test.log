@@ -1,502 +1,81 @@
-2026-08-29 02:22:06 [INFO] [machine_vision] ============================================================
-2026-08-29 02:22:06 [INFO] [machine_vision] Machine Vision Unsafe Behavior Detection System
-2026-08-29 02:22:06 [INFO] [machine_vision] ============================================================
-2026-08-29 02:22:06 [INFO] [machine_vision] Loading detection models...
-2026-08-29 02:22:06 [INFO] [multi_detector] Apple MPS detected, using mps
-2026-08-29 02:22:07 [INFO] [detector.ppe] Loading model [ppe]: models/yolov8-ppe.pt
-2026-08-29 02:22:07 [INFO] [detector.ppe] Model [ppe] loaded: 10 classes: ['Hardhat', 'Mask', 'NO-Hardhat', 'NO-Mask', 'NO-Safety Vest', 'Person', 'Safety Cone', 'Safety Vest', 'machinery', 'vehicle']
-2026-08-29 02:22:07 [INFO] [detector.smoking] Loading model [smoking]: models/yolov8-smoking.pt
-2026-08-29 02:22:07 [INFO] [detector.smoking] Model [smoking] loaded: 2 classes: ['cigarette', 'smoking']
-2026-08-29 02:22:07 [INFO] [multi_detector] Loaded 2 model(s): ['ppe', 'smoking']
-2026-08-29 02:22:07 [INFO] [machine_vision] Active models: ['ppe', 'smoking']
-2026-08-29 02:22:07 [INFO] [database] Database initialized: storage/alerts.db
-2026-08-29 02:22:07 [INFO] [panel.server] Panel starting on http://0.0.0.0:8000
-2026-08-29 02:22:07 [INFO] [machine_vision] Active rules: 3
-2026-08-29 02:22:07 [INFO] [machine_vision]   R01: no_safety_helmet [ppe] severity=3
-2026-08-29 02:22:07 [INFO] [machine_vision]   R13: smoking_no_fire_zone [ppe] severity=4
-2026-08-29 02:22:07 [INFO] [machine_vision]   R14: person_holding_cigarette [ppe] severity=3
-2026-08-29 02:22:07 [INFO] [machine_vision] Starting 1 enabled cameras (total configured: 5)
-2026-08-29 02:22:07 [INFO] [camera_manager] Camera CAM_PUFIN_1 is disabled, skipping
-2026-08-29 02:22:07 [INFO] [camera_manager] Camera CAM_PUFIN_2 is disabled, skipping
-2026-08-29 02:22:07 [INFO] [camera_manager] Camera CAM_PUFIN_3 is disabled, skipping
-2026-08-29 02:22:07 [INFO] [camera_manager] Camera CAM_PUFIN_4 is disabled, skipping
-2026-08-29 02:22:07 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:22:07 [INFO] [camera.CAM_TEST_1] Capture thread started: 本地测试视频-bus (test_videos/bus.mp4)
-2026-08-29 02:22:07 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:22:07 [INFO] [camera_manager] Started 1 camera streams
-2026-08-29 02:22:07 [INFO] [machine_vision] Waiting for camera connections...
-2026-08-29 02:22:07 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:22:10 [INFO] [machine_vision] Camera connection status: 1/1 connected
-2026-08-29 02:22:10 [INFO] [machine_vision] Starting main processing loop...
-2026-08-29 02:22:10 [INFO] [machine_vision] Press Ctrl+C to stop
-2026-08-29 02:22:10 [INFO] [machine_vision] ------------------------------------------------------------
-2026-08-29 02:22:11 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022209_93561.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:22:11 [INFO] [database] Alert #1605 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:22:11 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1605, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022209_93561.jpg
-2026-08-29 02:22:21 [INFO] [httpx] HTTP Request: GET http://127.0.0.1:9876/v1/models "HTTP/1.0 501 Unsupported method ('GET')"
-2026-08-29 02:22:22 [INFO] [database] Database initialized: storage/alerts.db
-2026-08-29 02:22:22 [INFO] [database] Database initialized: storage/alerts.db
-2026-08-29 02:22:55 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022255_19805.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:22:55 [INFO] [database] Alert #1606 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:22:55 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1606, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022255_19805.jpg
-2026-08-29 02:23:06 [INFO] [httpx] HTTP Request: GET http://127.0.0.1:9876/v1/models "HTTP/1.0 200 OK"
-2026-08-29 02:23:07 [INFO] [machine_vision] Stats: frames=112, violations=2, snapshots=2, uptime=60s, avg_fps=1.9
-2026-08-29 02:23:38 [INFO] [httpx] HTTP Request: POST http://127.0.0.1:9876/v1/chat/completions "HTTP/1.0 200 OK"
-2026-08-29 02:23:40 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022340_41692.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:23:40 [INFO] [database] Alert #1607 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:23:40 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1607, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022340_41692.jpg
-2026-08-29 02:23:49 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:23:54 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:23:54 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:23:54 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:24:07 [INFO] [machine_vision] Stats: frames=216, violations=3, snapshots=3, uptime=120s, avg_fps=1.8
-2026-08-29 02:24:26 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022425_76731.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:24:26 [INFO] [database] Alert #1608 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:24:26 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1608, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022425_76731.jpg
-2026-08-29 02:25:07 [INFO] [machine_vision] Stats: frames=335, violations=4, snapshots=4, uptime=180s, avg_fps=1.9
-2026-08-29 02:25:11 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022511_14130.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:25:11 [INFO] [database] Alert #1609 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:25:11 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1609, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022511_14130.jpg
-2026-08-29 02:25:36 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:25:41 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:25:41 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:25:41 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:25:56 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022556_46044.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:25:56 [INFO] [database] Alert #1610 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:25:56 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1610, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022556_46044.jpg
-2026-08-29 02:26:07 [INFO] [machine_vision] Stats: frames=439, violations=6, snapshots=6, uptime=240s, avg_fps=1.8
-2026-08-29 02:26:41 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022641_66698.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:26:41 [INFO] [database] Alert #1611 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:26:41 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1611, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022641_66698.jpg
-2026-08-29 02:27:07 [INFO] [machine_vision] Stats: frames=558, violations=7, snapshots=7, uptime=301s, avg_fps=1.9
-2026-08-29 02:27:22 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:27:27 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:27:27 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:27:27 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:27:30 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022730_55991.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:27:30 [INFO] [database] Alert #1612 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:27:30 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1612, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022730_55991.jpg
-2026-08-29 02:28:07 [INFO] [machine_vision] Stats: frames=662, violations=8, snapshots=8, uptime=361s, avg_fps=1.8
-2026-08-29 02:28:15 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022815_73071.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:28:15 [INFO] [database] Alert #1613 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:28:15 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1613, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022815_73071.jpg
-2026-08-29 02:29:01 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022901_06490.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:29:01 [INFO] [database] Alert #1614 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:29:01 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1614, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022901_06490.jpg
-2026-08-29 02:29:08 [INFO] [machine_vision] Stats: frames=782, violations=10, snapshots=10, uptime=421s, avg_fps=1.9
-2026-08-29 02:29:09 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:29:14 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:29:14 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:29:14 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:29:38 [INFO] [httpx] HTTP Request: POST http://127.0.0.1:9876/v1/chat/completions "HTTP/1.0 200 OK"
-2026-08-29 02:29:46 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022946_43809.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:29:46 [INFO] [database] Alert #1615 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:29:46 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1615, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_022946_43809.jpg
-2026-08-29 02:30:08 [INFO] [machine_vision] Stats: frames=886, violations=11, snapshots=11, uptime=481s, avg_fps=1.8
-2026-08-29 02:30:31 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023031_75085.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:30:31 [INFO] [database] Alert #1616 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:30:31 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1616, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023031_75085.jpg
-2026-08-29 02:30:56 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:31:01 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:31:01 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:31:01 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:31:08 [INFO] [machine_vision] Stats: frames=990, violations=12, snapshots=12, uptime=541s, avg_fps=1.8
-2026-08-29 02:31:17 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023117_01454.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:31:17 [INFO] [database] Alert #1617 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:31:17 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1617, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023117_01454.jpg
-2026-08-29 02:32:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023202_28636.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:32:02 [INFO] [database] Alert #1618 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:32:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1618, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023202_28636.jpg
-2026-08-29 02:32:08 [INFO] [machine_vision] Stats: frames=1110, violations=14, snapshots=14, uptime=602s, avg_fps=1.8
-2026-08-29 02:32:43 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:32:48 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:32:48 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:32:48 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:32:51 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023251_20296.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:32:51 [INFO] [database] Alert #1619 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:32:51 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1619, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023251_20296.jpg
-2026-08-29 02:33:08 [INFO] [machine_vision] Stats: frames=1214, violations=15, snapshots=15, uptime=662s, avg_fps=1.8
-2026-08-29 02:33:36 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023336_56489.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:33:36 [INFO] [database] Alert #1620 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:33:36 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1620, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023336_56489.jpg
-2026-08-29 02:34:02 [INFO] [httpx] HTTP Request: POST http://127.0.0.1:9876/v1/chat/completions "HTTP/1.0 200 OK"
-2026-08-29 02:34:08 [INFO] [machine_vision] Stats: frames=1333, violations=16, snapshots=16, uptime=722s, avg_fps=1.8
-2026-08-29 02:34:22 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023421_88684.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:34:22 [INFO] [database] Alert #1621 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:34:22 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1621, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023421_88684.jpg
-2026-08-29 02:34:25 [INFO] [httpx] HTTP Request: POST http://127.0.0.1:9876/v1/chat/completions "HTTP/1.0 200 OK"
-2026-08-29 02:34:30 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:34:35 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:34:35 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:34:35 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:34:52 [INFO] [httpx] HTTP Request: GET http://127.0.0.1:9876/v1/models "HTTP/1.0 200 OK"
-2026-08-29 02:35:05 [INFO] [httpx] HTTP Request: POST http://127.0.0.1:9876/v1/chat/completions "HTTP/1.0 200 OK"
-2026-08-29 02:35:07 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023507_30631.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:35:07 [INFO] [database] Alert #1622 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:35:07 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1622, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023507_30631.jpg
-2026-08-29 02:35:09 [INFO] [machine_vision] Stats: frames=1437, violations=18, snapshots=18, uptime=782s, avg_fps=1.8
-2026-08-29 02:35:53 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023552_60288.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:35:53 [INFO] [database] Alert #1623 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:35:53 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1623, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023552_60288.jpg
-2026-08-29 02:36:09 [INFO] [machine_vision] Stats: frames=1556, violations=19, snapshots=19, uptime=842s, avg_fps=1.8
-2026-08-29 02:36:17 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:36:22 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:36:22 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:36:22 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:36:38 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023637_93298.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:36:38 [INFO] [database] Alert #1624 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:36:38 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1624, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023637_93298.jpg
-2026-08-29 02:36:55 [INFO] [httpx] HTTP Request: GET https://ai.letus.lol/v1/models "HTTP/1.1 200 OK"
-2026-08-29 02:37:09 [INFO] [machine_vision] Stats: frames=1660, violations=20, snapshots=20, uptime=902s, avg_fps=1.8
-2026-08-29 02:37:11 [INFO] [httpx] HTTP Request: POST https://ai.letus.lol/v1/chat/completions "HTTP/1.1 200 OK"
-2026-08-29 02:37:23 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023723_13802.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:37:23 [INFO] [database] Alert #1625 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:37:23 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1625, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023723_13802.jpg
-2026-08-29 02:37:43 [INFO] [httpx] HTTP Request: POST https://ai.letus.lol/v1/chat/completions "HTTP/1.1 200 OK"
-2026-08-29 02:38:04 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:38:09 [INFO] [machine_vision] Stats: frames=1770, violations=21, snapshots=21, uptime=962s, avg_fps=1.8
-2026-08-29 02:38:09 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:38:09 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:38:09 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:38:12 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023812_13830.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:38:12 [INFO] [database] Alert #1626 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:38:12 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1626, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023812_13830.jpg
-2026-08-29 02:38:54 [INFO] [httpx] HTTP Request: POST https://ai.letus.lol/v1/chat/completions "HTTP/1.1 200 OK"
-2026-08-29 02:38:57 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023857_40263.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:38:57 [INFO] [database] Alert #1627 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:38:57 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1627, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023857_40263.jpg
-2026-08-29 02:39:09 [INFO] [machine_vision] Stats: frames=1883, violations=23, snapshots=23, uptime=1022s, avg_fps=1.8
-2026-08-29 02:39:42 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023942_70196.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:39:42 [INFO] [database] Alert #1628 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:39:42 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1628, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_023942_70196.jpg
-2026-08-29 02:39:51 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:39:56 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:39:56 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:39:56 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:40:09 [INFO] [machine_vision] Stats: frames=1987, violations=24, snapshots=24, uptime=1082s, avg_fps=1.8
-2026-08-29 02:40:28 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024028_05453.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:40:28 [INFO] [database] Alert #1629 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:40:28 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1629, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024028_05453.jpg
-2026-08-29 02:41:09 [INFO] [machine_vision] Stats: frames=2106, violations=25, snapshots=25, uptime=1142s, avg_fps=1.8
-2026-08-29 02:41:13 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024113_37955.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:41:13 [INFO] [database] Alert #1630 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:41:13 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1630, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024113_37955.jpg
-2026-08-29 02:41:38 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:41:43 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:41:43 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:41:43 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:41:59 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024158_80930.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:41:59 [INFO] [database] Alert #1631 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:41:59 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1631, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024158_80930.jpg
-2026-08-29 02:42:09 [INFO] [machine_vision] Stats: frames=2210, violations=27, snapshots=27, uptime=1202s, avg_fps=1.8
-2026-08-29 02:42:44 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024244_22795.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:42:44 [INFO] [database] Alert #1632 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:42:44 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1632, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_024244_22795.jpg
-2026-08-29 02:58:02 [INFO] [machine_vision] Stats: frames=2314, violations=28, snapshots=28, uptime=2156s, avg_fps=1.1
-2026-08-29 02:58:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_025802_72915.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 02:58:02 [INFO] [database] Alert #1633 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:58:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1633, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_025802_72915.jpg
-2026-08-29 02:58:25 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 02:58:30 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 02:58:30 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 02:58:30 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 02:58:48 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_025847_78165.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 02:58:48 [INFO] [database] Alert #1634 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 02:58:48 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1634, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_025847_78165.jpg
-2026-08-29 03:14:32 [INFO] [machine_vision] Stats: frames=2392, violations=30, snapshots=30, uptime=3146s, avg_fps=0.8
-2026-08-29 03:14:33 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_031433_17728.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 03:14:33 [INFO] [database] Alert #1635 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 03:14:33 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1635, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_031433_17728.jpg
-2026-08-29 03:15:18 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_031518_49711.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 03:15:18 [INFO] [database] Alert #1636 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 03:15:18 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1636, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_031518_49711.jpg
-2026-08-29 03:33:14 [INFO] [machine_vision] Stats: frames=2486, violations=32, snapshots=32, uptime=4268s, avg_fps=0.6
-2026-08-29 03:33:14 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_033314_65920.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 03:33:14 [INFO] [database] Alert #1637 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 03:33:14 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1637, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_033314_65920.jpg
-2026-08-29 03:33:48 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 03:33:53 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 03:33:53 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 03:33:54 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 03:50:59 [INFO] [machine_vision] Stats: frames=2556, violations=33, snapshots=33, uptime=5333s, avg_fps=0.5
-2026-08-29 03:50:59 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_035059_64907.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 03:50:59 [INFO] [database] Alert #1638 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 03:50:59 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1638, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_035059_64907.jpg
-2026-08-29 04:07:00 [INFO] [machine_vision] Stats: frames=2641, violations=34, snapshots=34, uptime=6294s, avg_fps=0.4
-2026-08-29 04:07:00 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_040700_63761.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:07:00 [INFO] [database] Alert #1639 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:07:00 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1639, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_040700_63761.jpg
-2026-08-29 04:07:46 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_040746_12111.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:07:46 [INFO] [database] Alert #1640 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:07:46 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1640, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_040746_12111.jpg
-2026-08-29 04:11:57 [INFO] [machine_vision] Stats: frames=2734, violations=36, snapshots=36, uptime=6590s, avg_fps=0.4
-2026-08-29 04:11:57 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_041157_62793.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:11:57 [INFO] [database] Alert #1641 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:11:57 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1641, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_041157_62793.jpg
-2026-08-29 04:12:04 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 04:12:09 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 04:12:09 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 04:12:09 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 04:29:00 [INFO] [machine_vision] Stats: frames=2804, violations=37, snapshots=37, uptime=7614s, avg_fps=0.4
-2026-08-29 04:29:00 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_042900_61031.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:29:00 [INFO] [database] Alert #1642 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:29:00 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1642, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_042900_61031.jpg
-2026-08-29 04:43:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_042946_06187.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:43:02 [INFO] [database] Alert #1643 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:43:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1643, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_042946_06187.jpg
-2026-08-29 04:43:02 [INFO] [machine_vision] Stats: frames=2894, violations=39, snapshots=39, uptime=8456s, avg_fps=0.3
-2026-08-29 04:43:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_044302_60187.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 04:43:02 [INFO] [database] Alert #1644 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:43:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1644, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_044302_60187.jpg
-2026-08-29 04:43:27 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 04:58:37 [INFO] [machine_vision] Stats: frames=2944, violations=40, snapshots=40, uptime=9391s, avg_fps=0.3
-2026-08-29 04:58:40 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 04:58:40 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 04:58:40 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 04:58:43 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_045842_89531.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 04:58:43 [INFO] [database] Alert #1645 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 04:58:43 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1645, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_045842_89531.jpg
-2026-08-29 05:16:12 [INFO] [machine_vision] Stats: frames=3028, violations=41, snapshots=41, uptime=10445s, avg_fps=0.3
-2026-08-29 05:16:12 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_051612_52886.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 05:16:12 [INFO] [database] Alert #1646 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 05:16:12 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1646, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_051612_52886.jpg
-2026-08-29 05:33:37 [INFO] [machine_vision] Stats: frames=3113, violations=42, snapshots=42, uptime=11490s, avg_fps=0.3
-2026-08-29 05:33:37 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_053337_48791.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 05:33:37 [INFO] [database] Alert #1647 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 05:33:37 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1647, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_053337_48791.jpg
-2026-08-29 05:33:50 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 05:33:55 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 05:33:55 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 05:33:55 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 05:44:02 [INFO] [machine_vision] Stats: frames=3183, violations=43, snapshots=43, uptime=12115s, avg_fps=0.3
-2026-08-29 05:44:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_054402_48070.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 05:44:02 [INFO] [database] Alert #1648 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 05:44:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1648, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_054402_48070.jpg
-2026-08-29 06:00:36 [INFO] [machine_vision] Stats: frames=3268, violations=44, snapshots=44, uptime=13109s, avg_fps=0.2
-2026-08-29 06:00:36 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_060036_44718.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 06:00:36 [INFO] [database] Alert #1649 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 06:00:36 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1649, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_060036_44718.jpg
-2026-08-29 06:01:09 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 06:01:14 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 06:01:14 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 06:01:14 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 06:16:25 [INFO] [machine_vision] Stats: frames=3338, violations=45, snapshots=45, uptime=14058s, avg_fps=0.2
-2026-08-29 06:16:25 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_061625_42586.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 06:16:25 [INFO] [database] Alert #1650 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 06:16:25 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1650, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_061625_42586.jpg
-2026-08-29 06:32:51 [INFO] [machine_vision] Stats: frames=3423, violations=46, snapshots=46, uptime=15044s, avg_fps=0.2
-2026-08-29 06:32:51 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_063251_40022.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 06:32:51 [INFO] [database] Alert #1651 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 06:32:51 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1651, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_063251_40022.jpg
-2026-08-29 06:33:36 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_063336_86400.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 06:33:36 [INFO] [database] Alert #1652 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 06:33:36 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1652, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_063336_86400.jpg
-2026-08-29 06:45:02 [INFO] [machine_vision] Stats: frames=3522, violations=48, snapshots=48, uptime=15775s, avg_fps=0.2
-2026-08-29 06:45:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_064502_37645.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 06:45:02 [INFO] [database] Alert #1653 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 06:45:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1653, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_064502_37645.jpg
-2026-08-29 06:45:05 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 06:45:10 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 06:45:10 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 06:45:10 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 07:02:32 [INFO] [machine_vision] Stats: frames=3592, violations=49, snapshots=49, uptime=16825s, avg_fps=0.2
-2026-08-29 07:02:32 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_070232_35529.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:02:32 [INFO] [database] Alert #1654 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:02:32 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1654, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_070232_35529.jpg
-2026-08-29 07:03:17 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_070317_80691.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:03:17 [INFO] [database] Alert #1655 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:03:17 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1655, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_070317_80691.jpg
-2026-08-29 07:20:51 [INFO] [machine_vision] Stats: frames=3685, violations=51, snapshots=51, uptime=17924s, avg_fps=0.2
-2026-08-29 07:20:51 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_072051_32946.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:20:51 [INFO] [database] Alert #1656 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:20:51 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1656, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_072051_32946.jpg
-2026-08-29 07:21:10 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 07:21:15 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 07:21:15 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 07:21:15 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 07:37:04 [INFO] [machine_vision] Stats: frames=3755, violations=52, snapshots=52, uptime=18897s, avg_fps=0.2
-2026-08-29 07:37:04 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_073704_30048.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:37:04 [INFO] [database] Alert #1657 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:37:04 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1657, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_073704_30048.jpg
-2026-08-29 07:37:49 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_073749_70394.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:37:49 [INFO] [database] Alert #1658 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:37:49 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1658, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_073749_70394.jpg
-2026-08-29 07:46:02 [INFO] [machine_vision] Stats: frames=3850, violations=54, snapshots=54, uptime=19435s, avg_fps=0.2
-2026-08-29 07:46:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_074602_28904.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 07:46:02 [INFO] [database] Alert #1659 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:46:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1659, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_074602_28904.jpg
-2026-08-29 07:46:37 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 07:46:42 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 07:46:42 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 07:46:42 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 07:46:48 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_074647_78115.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 07:46:48 [INFO] [database] Alert #1660 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 07:46:48 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1660, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_074647_78115.jpg
-2026-08-29 08:04:47 [INFO] [machine_vision] Stats: frames=3930, violations=56, snapshots=56, uptime=20560s, avg_fps=0.2
-2026-08-29 08:04:47 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_080447_26067.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 08:04:47 [INFO] [database] Alert #1661 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:04:47 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1661, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_080447_26067.jpg
-2026-08-29 08:22:07 [INFO] [machine_vision] Stats: frames=4015, violations=57, snapshots=57, uptime=21600s, avg_fps=0.2
-2026-08-29 08:22:07 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_082207_20382.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 08:22:07 [INFO] [database] Alert #1662 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:22:07 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1662, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_082207_20382.jpg
-2026-08-29 08:22:52 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_082252_60957.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 08:22:52 [INFO] [database] Alert #1663 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:22:52 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1663, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_082252_60957.jpg
-2026-08-29 08:40:47 [INFO] [machine_vision] Stats: frames=4108, violations=59, snapshots=59, uptime=22720s, avg_fps=0.2
-2026-08-29 08:40:47 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084047_65493.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 08:40:47 [INFO] [database] Alert #1664 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:40:47 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1664, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084047_65493.jpg
-2026-08-29 08:40:49 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 08:40:54 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 08:40:54 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 08:40:54 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 08:47:02 [INFO] [machine_vision] Stats: frames=4146, violations=60, snapshots=60, uptime=23095s, avg_fps=0.2
-2026-08-29 08:47:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084702_15985.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 08:47:02 [INFO] [database] Alert #1665 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:47:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1665, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084702_15985.jpg
-2026-08-29 08:47:47 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084747_59283.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 08:47:47 [INFO] [database] Alert #1666 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 08:47:47 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1666, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_084747_59283.jpg
-2026-08-29 09:03:18 [INFO] [machine_vision] Stats: frames=4245, violations=62, snapshots=62, uptime=24071s, avg_fps=0.2
-2026-08-29 09:03:18 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_090318_12129.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 09:03:18 [INFO] [database] Alert #1667 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 09:03:18 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1667, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_090318_12129.jpg
-2026-08-29 09:03:49 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 09:03:54 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 09:03:54 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 09:03:54 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 09:20:59 [INFO] [machine_vision] Stats: frames=4315, violations=63, snapshots=63, uptime=25132s, avg_fps=0.2
-2026-08-29 09:20:59 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_092059_10189.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 09:20:59 [INFO] [database] Alert #1668 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 09:20:59 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1668, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_092059_10189.jpg
-2026-08-29 09:38:46 [INFO] [machine_vision] Stats: frames=4400, violations=64, snapshots=64, uptime=26199s, avg_fps=0.2
-2026-08-29 09:38:46 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_093846_10914.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 09:38:46 [INFO] [database] Alert #1669 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 09:38:46 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1669, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_093846_10914.jpg
-2026-08-29 09:48:02 [INFO] [machine_vision] Stats: frames=4485, violations=65, snapshots=65, uptime=26755s, avg_fps=0.2
-2026-08-29 09:48:02 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_094802_06803.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 09:48:02 [INFO] [database] Alert #1670 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 09:48:02 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1670, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_094802_06803.jpg
-2026-08-29 09:48:10 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 09:48:15 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 09:48:15 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 09:48:15 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 10:06:10 [INFO] [machine_vision] Stats: frames=4555, violations=66, snapshots=66, uptime=27843s, avg_fps=0.2
-2026-08-29 10:06:10 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_100610_03978.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:06:10 [INFO] [database] Alert #1671 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:06:10 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1671, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_100610_03978.jpg
-2026-08-29 10:24:18 [INFO] [machine_vision] Stats: frames=4609, violations=67, snapshots=67, uptime=28931s, avg_fps=0.2
-2026-08-29 10:24:18 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_102418_04418.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:24:18 [INFO] [database] Alert #1672 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:24:18 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1672, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_102418_04418.jpg
-2026-08-29 10:25:03 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 10:42:45 [INFO] [machine_vision] Stats: frames=4698, violations=68, snapshots=68, uptime=30038s, avg_fps=0.2
-2026-08-29 10:42:46 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 10:42:46 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 10:42:46 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 10:42:49 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_104248_94143.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:42:49 [INFO] [database] Alert #1673 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:42:49 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1673, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_104248_94143.jpg
-2026-08-29 10:49:03 [INFO] [machine_vision] Stats: frames=4786, violations=69, snapshots=69, uptime=30416s, avg_fps=0.2
-2026-08-29 10:49:03 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_104902_95577.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:49:03 [INFO] [database] Alert #1674 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:49:03 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1674, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_104902_95577.jpg
-2026-08-29 10:57:39 [INFO] [machine_vision] Stats: frames=4871, violations=70, snapshots=70, uptime=30932s, avg_fps=0.2
-2026-08-29 10:57:39 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105739_10391.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 10:57:39 [INFO] [database] Alert #1675 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:57:39 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1675, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105739_10391.jpg
-2026-08-29 10:57:49 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 10:57:54 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 10:57:54 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 10:57:54 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 10:58:24 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105824_46461.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:58:24 [INFO] [database] Alert #1676 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:58:24 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1676, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105824_46461.jpg
-2026-08-29 10:58:39 [INFO] [machine_vision] Stats: frames=4975, violations=72, snapshots=72, uptime=30992s, avg_fps=0.2
-2026-08-29 10:59:10 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105909_68690.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 10:59:10 [INFO] [database] Alert #1677 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:59:10 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1677, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105909_68690.jpg
-2026-08-29 10:59:36 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 10:59:39 [INFO] [machine_vision] Stats: frames=5090, violations=73, snapshots=73, uptime=31052s, avg_fps=0.2
-2026-08-29 10:59:41 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 10:59:41 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 10:59:41 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 10:59:55 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105954_98334.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 10:59:55 [INFO] [database] Alert #1678 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 10:59:55 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1678, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_105954_98334.jpg
-2026-08-29 11:00:39 [INFO] [machine_vision] Stats: frames=5199, violations=74, snapshots=74, uptime=31113s, avg_fps=0.2
-2026-08-29 11:00:40 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110040_22144.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 11:00:40 [INFO] [database] Alert #1679 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:00:40 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1679, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110040_22144.jpg
-2026-08-29 11:01:23 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 11:01:28 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 11:01:28 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 11:01:28 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 11:01:31 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110131_18487.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:01:31 [INFO] [database] Alert #1680 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:01:31 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1680, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110131_18487.jpg
-2026-08-29 11:01:40 [INFO] [machine_vision] Stats: frames=5304, violations=76, snapshots=76, uptime=31173s, avg_fps=0.2
-2026-08-29 11:02:16 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110216_46501.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:02:16 [INFO] [database] Alert #1681 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:02:16 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1681, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110216_46501.jpg
-2026-08-29 11:02:40 [INFO] [machine_vision] Stats: frames=5424, violations=77, snapshots=77, uptime=31233s, avg_fps=0.2
-2026-08-29 11:03:01 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110301_67067.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 11:03:01 [INFO] [database] Alert #1682 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:03:01 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1682, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110301_67067.jpg
-2026-08-29 11:03:10 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 11:03:15 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 11:03:15 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 11:03:15 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 11:03:40 [INFO] [machine_vision] Stats: frames=5529, violations=78, snapshots=78, uptime=31294s, avg_fps=0.2
-2026-08-29 11:03:47 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110347_06198.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:03:47 [INFO] [database] Alert #1683 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:03:47 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1683, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110347_06198.jpg
-2026-08-29 11:04:32 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110432_24286.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 11:04:32 [INFO] [database] Alert #1684 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:04:32 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1684, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110432_24286.jpg
-2026-08-29 11:04:41 [INFO] [machine_vision] Stats: frames=5649, violations=80, snapshots=80, uptime=31354s, avg_fps=0.2
-2026-08-29 11:04:57 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 11:05:02 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 11:05:02 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 11:05:02 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 11:05:18 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110517_67963.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:05:18 [INFO] [database] Alert #1685 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:05:18 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1685, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110517_67963.jpg
-2026-08-29 11:05:41 [INFO] [machine_vision] Stats: frames=5753, violations=81, snapshots=81, uptime=31415s, avg_fps=0.2
-2026-08-29 11:06:03 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110602_94274.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 11:06:03 [INFO] [database] Alert #1686 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:06:03 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1686, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110602_94274.jpg
-2026-08-29 11:06:42 [INFO] [machine_vision] Stats: frames=5873, violations=82, snapshots=82, uptime=31475s, avg_fps=0.2
-2026-08-29 11:06:44 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 11:06:49 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 11:06:49 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 11:06:49 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 11:06:52 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110651_85343.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:06:52 [INFO] [database] Alert #1687 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:06:52 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1687, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110651_85343.jpg
-2026-08-29 11:07:37 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110737_18753.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:07:37 [INFO] [database] Alert #1688 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:07:37 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1688, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110737_18753.jpg
-2026-08-29 11:07:42 [INFO] [machine_vision] Stats: frames=5978, violations=84, snapshots=84, uptime=31535s, avg_fps=0.2
-2026-08-29 11:08:22 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110822_49562.jpg [no_safety_helmet, conf=0.91]
-2026-08-29 11:08:22 [INFO] [database] Alert #1690 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:08:22 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #1690, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110822_49562.jpg
-2026-08-29 11:08:31 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
-2026-08-29 11:08:36 [INFO] [camera.CAM_TEST_1] Reconnecting...
-2026-08-29 11:08:36 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
-2026-08-29 11:08:36 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
-2026-08-29 11:08:42 [INFO] [machine_vision] Stats: frames=6083, violations=85, snapshots=85, uptime=31596s, avg_fps=0.2
-2026-08-29 11:09:08 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110907_82988.jpg [no_safety_helmet, conf=0.89]
-2026-08-29 11:09:08 [INFO] [database] Alert #1692 saved: [CAM_TEST_1] R01 no_safety_helmet
-2026-08-29 11:09:08 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #1692, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_110907_82988.jpg
-2026-08-29 11:09:43 [INFO] [machine_vision] Stats: frames=6202, violations=86, snapshots=86, uptime=31656s, avg_fps=0.2
-
-2026-08-29 11:09:46 [INFO] [machine_vision] Shutting down...
-2026-08-29 11:09:46 [INFO] [panel.server] Panel stopped
-2026-08-29 11:09:46 [INFO] [camera_manager] Stopping all camera streams...
-2026-08-29 11:09:46 [INFO] [camera.CAM_TEST_1] Capture thread stopped: CAM_TEST_1
-2026-08-29 11:09:46 [INFO] [camera_manager] All camera streams stopped
-2026-08-29 11:09:46 [INFO] [machine_vision] Stats: frames=6210, violations=86, snapshots=86, uptime=31660s, avg_fps=0.2
-2026-08-29 11:09:46 [INFO] [machine_vision] Total alerts in database: 1693
-2026-08-29 11:09:46 [INFO] [machine_vision] System stopped.
+2026-08-29 20:58:14 [INFO] [machine_vision] ============================================================
+2026-08-29 20:58:14 [INFO] [machine_vision] Machine Vision Unsafe Behavior Detection System
+2026-08-29 20:58:14 [INFO] [machine_vision] ============================================================
+2026-08-29 20:58:14 [INFO] [machine_vision] Loading detection models...
+2026-08-29 20:58:14 [INFO] [multi_detector] Apple MPS detected, using mps
+2026-08-29 20:58:15 [INFO] [detector.ppe] Loading model [ppe]: models/yolov8-ppe.pt
+2026-08-29 20:58:15 [INFO] [detector.ppe] Model [ppe] loaded: 10 classes: ['Hardhat', 'Mask', 'NO-Hardhat', 'NO-Mask', 'NO-Safety Vest', 'Person', 'Safety Cone', 'Safety Vest', 'machinery', 'vehicle']
+2026-08-29 20:58:15 [INFO] [detector.smoking] Loading model [smoking]: models/yolov8-smoking.pt
+2026-08-29 20:58:15 [INFO] [detector.smoking] Model [smoking] loaded: 2 classes: ['cigarette', 'smoking']
+2026-08-29 20:58:15 [INFO] [multi_detector] Loaded 2 model(s): ['ppe', 'smoking']
+2026-08-29 20:58:15 [INFO] [machine_vision] Active models: ['ppe', 'smoking']
+2026-08-29 20:58:15 [INFO] [database] Database initialized: storage/alerts.db
+2026-08-29 20:58:15 [INFO] [panel.server] Panel starting on http://0.0.0.0:8000
+2026-08-29 20:58:15 [INFO] [machine_vision] Active rules: 3
+2026-08-29 20:58:15 [INFO] [machine_vision]   R01: no_safety_helmet [ppe] severity=3
+2026-08-29 20:58:15 [INFO] [machine_vision]   R13: smoking_no_fire_zone [ppe] severity=4
+2026-08-29 20:58:15 [INFO] [machine_vision]   R14: person_holding_cigarette [ppe] severity=3
+2026-08-29 20:58:15 [INFO] [machine_vision] Starting 1 enabled cameras (total configured: 5)
+2026-08-29 20:58:15 [INFO] [camera_manager] Camera CAM_PUFIN_1 is disabled, skipping
+2026-08-29 20:58:15 [INFO] [camera_manager] Camera CAM_PUFIN_2 is disabled, skipping
+2026-08-29 20:58:15 [INFO] [camera_manager] Camera CAM_PUFIN_3 is disabled, skipping
+2026-08-29 20:58:15 [INFO] [camera_manager] Camera CAM_PUFIN_4 is disabled, skipping
+2026-08-29 20:58:15 [INFO] [camera.CAM_TEST_1] Reconnecting...
+2026-08-29 20:58:15 [INFO] [camera.CAM_TEST_1] Capture thread started: 本地测试视频-bus (test_videos/bus.mp4)
+2026-08-29 20:58:15 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
+2026-08-29 20:58:15 [INFO] [camera_manager] Started 1 camera streams
+2026-08-29 20:58:15 [INFO] [machine_vision] Waiting for camera connections...
+2026-08-29 20:58:15 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
+2026-08-29 20:58:18 [INFO] [machine_vision] Camera connection status: 1/1 connected
+2026-08-29 20:58:18 [INFO] [machine_vision] Starting main processing loop...
+2026-08-29 20:58:18 [INFO] [machine_vision] Press Ctrl+C to stop
+2026-08-29 20:58:18 [INFO] [machine_vision] ------------------------------------------------------------
+2026-08-29 20:58:20 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205818_19248.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 20:58:20 [INFO] [database] Alert #2107 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 20:58:20 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2107, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205818_19248.jpg
+[tcp @ 0x16ada4140] Connection to tcp://10.255.255.1:554?timeout=0 failed: Connection refused
+[ WARN:0@13.844] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+2026-08-29 20:59:03 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205903_41275.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 20:59:03 [INFO] [database] Alert #2108 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 20:59:03 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2108, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205903_41275.jpg
+2026-08-29 20:59:15 [INFO] [machine_vision] Stats: frames=111, violations=2, snapshots=2, uptime=60s, avg_fps=1.8
+2026-08-29 20:59:48 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205948_56636.jpg [no_safety_helmet, conf=0.91]
+2026-08-29 20:59:48 [INFO] [database] Alert #2109 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 20:59:48 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #2109, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_205948_56636.jpg
+2026-08-29 20:59:57 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
+2026-08-29 21:00:02 [INFO] [camera.CAM_TEST_1] Reconnecting...
+2026-08-29 21:00:02 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
+2026-08-29 21:00:02 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
+2026-08-29 21:00:15 [INFO] [machine_vision] Stats: frames=215, violations=3, snapshots=3, uptime=120s, avg_fps=1.8
+2026-08-29 21:00:34 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210033_91012.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 21:00:34 [INFO] [database] Alert #2110 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:00:34 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2110, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210033_91012.jpg
+2026-08-29 21:01:16 [INFO] [machine_vision] Stats: frames=334, violations=4, snapshots=4, uptime=181s, avg_fps=1.8
+2026-08-29 21:01:19 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210119_19688.jpg [no_safety_helmet, conf=0.91]
+2026-08-29 21:01:19 [INFO] [database] Alert #2111 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:01:19 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #2111, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210119_19688.jpg
+2026-08-29 21:01:44 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
+2026-08-29 21:01:49 [INFO] [camera.CAM_TEST_1] Reconnecting...
+2026-08-29 21:01:49 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
+2026-08-29 21:01:49 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
+2026-08-29 21:02:05 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210204_58262.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 21:02:05 [INFO] [database] Alert #2112 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:02:05 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2112, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210204_58262.jpg
+2026-08-29 21:02:16 [INFO] [machine_vision] Stats: frames=438, violations=6, snapshots=6, uptime=241s, avg_fps=1.8
+2026-08-29 21:02:50 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210249_79750.jpg [no_safety_helmet, conf=0.91]
+2026-08-29 21:02:50 [INFO] [database] Alert #2113 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:02:50 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.91) -> Alert #2113, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210249_79750.jpg
+2026-08-29 21:03:17 [INFO] [machine_vision] Stats: frames=557, violations=7, snapshots=7, uptime=302s, avg_fps=1.8
+[ WARN:1@315.595] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30056.872915 ms
+[ WARN:1@315.595] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+2026-08-29 21:03:31 [WARNING] [camera.CAM_TEST_1] Too many consecutive failures (5), reconnecting...
+2026-08-29 21:03:36 [INFO] [camera.CAM_TEST_1] Reconnecting...
+2026-08-29 21:03:36 [INFO] [camera.CAM_TEST_1] Connecting to test_videos/bus.mp4...
+2026-08-29 21:03:36 [INFO] [camera.CAM_TEST_1] Connected: 810x1080 @ 10.0 FPS
+2026-08-29 21:03:38 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210338_76400.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 21:03:38 [INFO] [database] Alert #2114 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:03:38 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2114, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210338_76400.jpg
+2026-08-29 21:04:17 [INFO] [machine_vision] Stats: frames=661, violations=8, snapshots=8, uptime=362s, avg_fps=1.8
+2026-08-29 21:04:24 [INFO] [snapshot] Snapshot saved: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210424_01332.jpg [no_safety_helmet, conf=0.89]
+2026-08-29 21:04:24 [INFO] [database] Alert #2115 saved: [CAM_TEST_1] R01 no_safety_helmet
+2026-08-29 21:04:24 [WARNING] [machine_vision] VIOLATION [CAM_TEST_1] R01 no_safety_helmet (conf=0.89) -> Alert #2115, Snapshot: storage/snapshots/2026-08-29/no_safety_helmet/CAM_TEST_1_R01_210424_01332.jpg

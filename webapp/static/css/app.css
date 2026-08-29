@@ -548,3 +548,19 @@ pre.log .INFO { color: #64748b; }
   .sidebar-foot { display: none; }
   .content, .page-head { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ============ Rules page: template management ============ */
+.tpl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.tpl-head h3 { margin: 0; font-size: 14.5px; }
+.tpl-param-grid {
+  display: grid;
+  grid-template-columns: 110px 92px 1fr 74px 74px 1.5fr 58px 30px;
+  gap: 6px; align-items: center; margin-bottom: 6px;
+}
+.tpl-param-grid.header { margin-bottom: 8px; }
+.tpl-param-grid.header span { font-size: 11px; color: var(--muted); }
+.tpl-param-grid label.fm {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--muted); white-space: nowrap; margin: 0;
+}
+.tpl-param-grid input, .tpl-param-grid select { width: 100%; min-width: 0; }

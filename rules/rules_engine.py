@@ -2,15 +2,20 @@
 Rules engine - template-driven, persisted to config/rules.yaml.
 
 Rules are data, not code (manageable from the web panel):
-  - Each rule instance picks a TEMPLATE (ppe_absence / presence_near_person)
+  - Each rule instance picks a TEMPLATE (defined in config/rule_templates.yaml)
     and carries its own params, bound models and severity.
+  - A template binds a label + param schema to one check LOGIC primitive
+    (CHECK_LOGICS, implemented in core/analyzer.py). Templates are config, so
+    adding a template type = a YAML entry / a few clicks in the panel; truly
+    new detection behaviour = a new primitive (code).
   - On first run the built-in seed rules (1/13/14) are migrated to
-    config/rules.yaml with their original IDs so alert history stays valid.
-  - The store watches the YAML mtime, so edits (panel or manual) are picked
+    config/rules.yaml and the seed templates to config/rule_templates.yaml.
+  - Both stores watch their YAML mtime, so edits (panel or manual) are picked
     up on the next frame without restart.
 """
 
 import copy
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,23 +23,33 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
-# ============================================================
-# Rule templates
-# ============================================================
-# Each template defines which params a rule instance carries. The panel uses
-# PARAM_SPECS to render edit forms dynamically; the analyzer dispatches on
-# template name.
-
 TEMPLATE_PPE_ABSENCE = "ppe_absence"
 TEMPLATE_PRESENCE_NEAR_PERSON = "presence_near_person"
 
-# Param specs: ``from_model`` marks params whose classes must exist in the
-# rule's bound models (used for panel validation and model routing). Params
-# like person_classes are typically supplied by *another* model (e.g. a PPE
-# model detecting Person), so they are resolved dynamically instead.
-PARAM_SPECS = {
+# ============================================================
+# Check logic primitives (implemented in core/analyzer.py)
+# ============================================================
+# The analyzer dispatches on the template's ``logic`` field, not its name.
+
+LOGIC_PRESENCE = "presence"
+LOGIC_PRESENCE_NEAR = "presence_near"
+LOGIC_ABSENCE_REQUIRED = "absence_required"
+
+CHECK_LOGICS = {
+    LOGIC_PRESENCE: "检出即违规：画面出现触发类别就告警（如明火、打电话）",
+    LOGIC_PRESENCE_NEAR: "靠近人员才违规：触发类检出且与人员框重叠才告警（如吸烟）",
+    LOGIC_ABSENCE_REQUIRED: "装备缺失即违规：人员未被必需装备框覆盖，或检出违规类（如未戴安全帽）",
+}
+
+# Seed templates migrated to rule_templates.yaml on first run.
+# ``from_model`` marks params whose classes must exist in the rule's bound
+# models (used for panel validation). Params like person_classes are typically
+# supplied by *another* model (e.g. a PPE model detecting Person), so they are
+# resolved dynamically instead.
+_SEED_TEMPLATES = {
     TEMPLATE_PPE_ABSENCE: {
         "label": "装备缺失检查（如未戴安全帽）",
+        "logic": LOGIC_ABSENCE_REQUIRED,
         "params": [
             {"name": "person_classes", "type": "classes", "default": ["person"],
              "desc": "人员类别（可来自其他模型，如 PPE 模型的 Person）",
@@ -51,6 +66,7 @@ PARAM_SPECS = {
     },
     TEMPLATE_PRESENCE_NEAR_PERSON: {
         "label": "目标出现在人员附近（如吸烟/持烟）",
+        "logic": LOGIC_PRESENCE_NEAR,
         "params": [
             {"name": "trigger_classes", "type": "classes", "default": ["cigarette"],
              "desc": "触发类别（检出且靠近人员即违规）", "from_model": True},
@@ -65,6 +81,163 @@ PARAM_SPECS = {
         ],
     },
 }
+
+_PARAM_TYPES = ("classes", "list", "float", "int")
+_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+class TemplateStore:
+    """rule_templates.yaml loader with mtime-based hot reload and CRUD."""
+
+    def __init__(self, config_dir="config"):
+        self._path = Path(config_dir) / "rule_templates.yaml"
+        self._lock = threading.Lock()
+        self._cache: dict = {}
+        self._mtime: float = -1.0
+        self._yaml = YAML(typ="rt")  # round-trip: preserve comments
+        self._seed_if_missing()
+
+    # ---------- persistence ----------
+
+    def _seed_if_missing(self):
+        if self._path.exists():
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        data = CommentedMap()
+        data["templates"] = self._to_yaml_dict(_SEED_TEMPLATES)
+        self._yaml.dump(data, self._path.open("w", encoding="utf-8"))
+
+    @staticmethod
+    def _to_yaml_dict(templates: dict) -> CommentedMap:
+        out = CommentedMap()
+        for name, spec in templates.items():
+            m = CommentedMap()
+            m["label"] = spec["label"]
+            m["logic"] = spec["logic"]
+            params = []
+            for p in spec.get("params", []):
+                pm = CommentedMap()
+                for k, v in p.items():
+                    pm[k] = copy.deepcopy(v)
+                params.append(pm)
+            m["params"] = params
+            out[name] = m
+        return out
+
+    def _load(self) -> dict:
+        raw = self._yaml.load(self._path.open("r", encoding="utf-8")) or {}
+        templates = {}
+        for name, spec in (raw.get("templates") or {}).items():
+            spec = spec or {}
+            templates[str(name)] = {
+                "label": str(spec.get("label") or name),
+                "logic": str(spec.get("logic") or ""),
+                "params": [dict(p) for p in (spec.get("params") or [])],
+            }
+        return templates
+
+    def _save(self, templates: dict):
+        with self._lock:
+            self._yaml.dump({"templates": self._to_yaml_dict(templates)},
+                            self._path.open("w", encoding="utf-8"))
+            self._mtime = -1.0  # force reload
+
+    # ---------- reads (mtime-aware) ----------
+
+    def get_all(self) -> dict:
+        try:
+            mtime = self._path.stat().st_mtime
+        except OSError:
+            mtime = -1.0
+        if mtime != self._mtime:
+            with self._lock:
+                if mtime != self._mtime:
+                    try:
+                        self._cache = self._load()
+                        self._mtime = mtime
+                    except Exception:
+                        pass  # keep last good cache on broken YAML
+        return dict(self._cache)
+
+    def logic_of(self, template: str) -> str | None:
+        spec = self.get_all().get(template)
+        return spec["logic"] if spec else None
+
+    def specs(self) -> dict:
+        """Template metadata for the panel's dynamic rule edit forms."""
+        return self.get_all()
+
+    # ---------- validation ----------
+
+    @staticmethod
+    def validate(name: str, spec: dict) -> dict:
+        """Normalize + validate one template definition; raises ValueError."""
+        if not _NAME_RE.match(name or ""):
+            raise ValueError("模板名只能用小写字母/数字/下划线，且以字母开头")
+        label = str(spec.get("label") or "").strip()
+        if not label:
+            raise ValueError("模板显示名称不能为空")
+        logic = str(spec.get("logic") or "").strip()
+        if logic not in CHECK_LOGICS:
+            raise ValueError(
+                f"未知检测原语: {logic}，可选: {', '.join(CHECK_LOGICS)}")
+        params, seen = [], set()
+        for p in spec.get("params") or []:
+            pname = str(p.get("name") or "").strip()
+            if not _NAME_RE.match(pname):
+                raise ValueError(f"参数名不合法: {pname!r}")
+            if pname in seen:
+                raise ValueError(f"参数名重复: {pname}")
+            seen.add(pname)
+            ptype = str(p.get("type") or "classes")
+            if ptype not in _PARAM_TYPES:
+                raise ValueError(f"参数 {pname} 类型不支持: {ptype}")
+            clean = {"name": pname, "type": ptype,
+                     "desc": str(p.get("desc") or pname)}
+            default = p.get("default")
+            if ptype in ("float", "int"):
+                try:
+                    default = float(default) if ptype == "float" \
+                        else int(float(default))
+                except (TypeError, ValueError):
+                    raise ValueError(f"参数 {pname} 默认值必须是数字")
+                if p.get("min") is not None:
+                    clean["min"] = float(p["min"])
+                if p.get("max") is not None:
+                    clean["max"] = float(p["max"])
+            else:
+                if isinstance(default, str):
+                    default = [x.strip() for x in default.split(",") if x.strip()]
+                if default is None:
+                    default = []
+                default = [str(x) for x in default]
+            clean["default"] = default
+            clean["from_model"] = bool(p.get("from_model"))
+            params.append(clean)
+        return {"label": label, "logic": logic, "params": params}
+
+    # ---------- writes ----------
+
+    def add(self, name: str, spec: dict):
+        templates = self.get_all()
+        if name in templates:
+            raise ValueError(f"模板已存在: {name}")
+        templates[name] = self.validate(name, spec)
+        self._save(templates)
+
+    def update(self, name: str, spec: dict):
+        templates = self.get_all()
+        if name not in templates:
+            raise ValueError(f"模板不存在: {name}")
+        templates[name] = self.validate(name, spec)
+        self._save(templates)
+
+    def delete(self, name: str):
+        templates = self.get_all()
+        if name not in templates:
+            raise ValueError(f"模板不存在: {name}")
+        del templates[name]
+        self._save(templates)
 
 
 @dataclass
@@ -141,6 +314,7 @@ class RulesStore:
         self._cache: list[RuleDefinition] = []
         self._mtime: float = -1.0
         self._yaml = YAML(typ="rt")  # round-trip: preserve comments
+        self._templates = TemplateStore(config_dir)
         self._seed_if_missing()
 
     # ---------- persistence ----------
@@ -165,10 +339,11 @@ class RulesStore:
 
     def _load(self):
         raw = self._yaml.load(self._path.open("r", encoding="utf-8")) or {}
+        known_templates = self._templates.get_all()
         rules = []
         for r in raw.get("rules", []):
             template = r.get("template", TEMPLATE_PRESENCE_NEAR_PERSON)
-            if template not in PARAM_SPECS:
+            if template not in known_templates:
                 continue  # unknown template: skip rather than crash detection
             rules.append(
                 RuleDefinition(
@@ -265,7 +440,8 @@ class RulesStore:
                     "severity", "enabled"):
             if key in fields:
                 setattr(target, key, fields[key])
-        if "template" in fields and fields["template"] not in PARAM_SPECS:
+        if "template" in fields and fields["template"] not in \
+                self._templates.get_all():
             raise ValueError(f"未知模板类型: {fields['template']}")
         self._save(rules)
         return target
@@ -279,6 +455,7 @@ class RulesStore:
 
 # Module-level singleton so main / analyzer / panel share one cache.
 _store: RulesStore | None = None
+_template_store: TemplateStore | None = None
 
 
 def get_rules_store(config_dir="config") -> RulesStore:
@@ -286,6 +463,13 @@ def get_rules_store(config_dir="config") -> RulesStore:
     if _store is None:
         _store = RulesStore(config_dir)
     return _store
+
+
+def get_template_store(config_dir="config") -> TemplateStore:
+    global _template_store
+    if _template_store is None:
+        _template_store = TemplateStore(config_dir)
+    return _template_store
 
 
 # Backward-compatible helpers ----------------------------------------------
@@ -298,9 +482,11 @@ def get_all_rules(config_dir="config") -> list[RuleDefinition]:
     return sorted(get_rules_store(config_dir).get_all(), key=lambda r: r.id)
 
 
-def get_template_specs() -> dict:
+def get_template_specs(config_dir="config") -> dict:
     """Template metadata for the panel's dynamic rule edit forms."""
-    return {
-        name: {"label": spec["label"], "params": spec["params"]}
-        for name, spec in PARAM_SPECS.items()
-    }
+    return get_template_store(config_dir).specs()
+
+
+def get_template_logics() -> dict:
+    """Check logic primitives a new template can bind to (name -> description)."""
+    return dict(CHECK_LOGICS)

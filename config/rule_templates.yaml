@@ -1,0 +1,68 @@
+# 规则模板定义 —— 模板即配置：新增模板类型无需改代码。
+#
+# 每个模板 = 显示名称(label) + 检测原语(logic) + 参数定义(params)。
+# 规则实例（rules.yaml）引用模板并填参数；面板"规则配置 → 模板管理"
+# 可在线增删改，保存即生效（mtime 热加载）。
+#
+# logic 可选值（检测引擎原语，实现见 core/analyzer.py）:
+#   presence         检出即违规：画面出现触发类别就告警（如明火、打电话）
+#   presence_near    靠近人员才违规：触发类检出且与人员框重叠才告警（如吸烟）
+#   absence_required 装备缺失即违规：人员未被必需装备框覆盖，或检出违规类（如未戴安全帽）
+#
+# 参数 type: classes(逗号分隔类别) / float / int；
+# from_model: true 表示该参数里的类别应存在于规则绑定的模型中（面板校验用）。
+templates:
+  ppe_absence:
+    label: 装备缺失检查（如未戴安全帽）
+    logic: absence_required
+    params:
+    - name: person_classes
+      type: classes
+      default: [person]
+      desc: 人员类别（可来自其他模型，如 PPE 模型的 Person）
+      from_model: false
+    - name: required_classes
+      type: classes
+      default: [hardhat]
+      desc: 必须佩戴的装备类别（框与人员重叠视为已佩戴）
+      from_model: true
+    - name: absence_classes
+      type: classes
+      default: []
+      desc: 一票否决类别（检出即违规，如 no-hardhat）
+      from_model: true
+    - name: coverage_ratio
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 1.0
+      desc: 装备框被人员框覆盖的比例阈值
+      from_model: false
+  presence_near_person:
+    label: 目标出现在人员附近（如吸烟/持烟）
+    logic: presence_near
+    params:
+    - name: trigger_classes
+      type: classes
+      default: [cigarette]
+      desc: 触发类别（检出且靠近人员即违规）
+      from_model: true
+    - name: person_classes
+      type: classes
+      default: [person]
+      desc: 人员类别（可来自其他模型，如 PPE 模型的 Person）
+      from_model: false
+    - name: overlap_margin
+      type: float
+      default: 0.2
+      min: 0.0
+      max: 2.0
+      desc: 触发框相对人员框的外扩比例
+      from_model: false
+    - name: min_confidence
+      type: float
+      default: 0.0
+      min: 0.0
+      max: 1.0
+      desc: 触发检测的最低置信度（0 为不限制）
+      from_model: false

@@ -1,5 +1,6 @@
-"""Camera CRUD + live preview API."""
+"""Camera CRUD + live preview + stream test API."""
 
+import os
 import threading
 import time
 
@@ -10,6 +11,59 @@ from fastapi.responses import StreamingResponse
 from webapp.api.common import abort_on_value_error, get_state
 
 router = APIRouter()
+
+_test_lock = threading.Lock()  # one stream test at a time
+
+
+@router.post("/api/cameras/test")
+def test_camera_stream(request: Request, data: dict):
+    """Try opening an RTSP/local URL and grabbing one frame.
+
+    Accepts the `__KEEP__` password placeholder (resolved against the stored
+    config) so the test works without the panel ever seeing the password.
+    """
+    state = get_state(request)
+    url = str(data.get("url", "")).strip()
+    if not url:
+        raise HTTPException(400, "缺少地址")
+
+    if "__KEEP__@" in url:
+        cam_id = data.get("camera_id", "")
+        old = next((c.get("rtsp_url", "") for c in state.config.get_cameras()
+                    if c.get("id") == cam_id), "")
+        merged = state._merge_keep_password(url, old)
+        if "__KEEP__@" in merged:
+            raise HTTPException(400, "无法解析原密码，请直接填写密码")
+        url = merged
+
+    with _test_lock:  # also protects the temporary env mutation below
+        old_env = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+        # 测试统一走 TCP（与部署建议一致）
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+        try:
+            cap = cv2.VideoCapture()
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+            opened = cap.open(url, cv2.CAP_FFMPEG)
+            if not opened:
+                return {"ok": False,
+                        "error": "无法建立连接：地址/端口/认证错误，或网络不可达"}
+            t0 = time.time()
+            ok, frame = cap.read()
+            latency = int((time.time() - t0) * 1000)
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = round(cap.get(cv2.CAP_PROP_FPS) or 0, 1)
+            cap.release()
+            if not ok:
+                return {"ok": False, "error": "连接成功但取帧失败（流不稳定或编码不支持）"}
+            return {"ok": True, "width": w, "height": h, "fps": fps,
+                    "latency_ms": latency}
+        finally:
+            if old_env is None:
+                os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+            else:
+                os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = old_env
 
 
 @router.get("/api/cameras")

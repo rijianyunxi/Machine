@@ -30,12 +30,10 @@
       一次只跑一个训练任务。</p>
   </div>
 
-  <div class="stack">
-    <div class="card">
+  <div class="stack" style="height:100%">
+    <div class="card" style="flex:1">
       <div class="card-title">训练状态 <span class="muted" id="st-name"></span></div>
       <div id="status">尚未启动训练</div>
-      <div class="card-title" style="margin-top:16px;margin-bottom:8px">日志（尾部）</div>
-      <pre class="log" id="train-log" style="max-height:200px">—</pre>
     </div>
 
     <div class="card">
@@ -46,6 +44,11 @@
       </table></div>
     </div>
   </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-title">日志（尾部）<span class="muted">训练子进程 stdout</span></div>
+  <pre class="log" id="train-log" style="max-height:240px">—</pre>
 </div>
 {% endblock %}
 
@@ -114,7 +117,10 @@ async function pollStatus() {
     const s = await api("/api/train/status");
     const el = document.getElementById("status");
     document.getElementById("st-name").textContent = s.name ? `· ${s.name}` : "";
-    if (s.state === "idle") { el.innerHTML = '<p class="muted">尚未启动训练</p>'; return; }
+    if (s.state === "idle") {
+      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px"><p class="muted">尚未启动训练</p></div>';
+      return;
+    }
     const pct = s.epoch && s.epochs_total
       ? Math.min(100, Math.round(s.epoch / s.epochs_total * 100)) : 0;
     const stateChip = { running: badge("训练中", "blue"), completed: badge("已完成", "green"),

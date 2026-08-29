@@ -271,13 +271,31 @@ class RuntimeState:
     def _mask_password(url: str) -> str:
         return re.sub(r"(://[^:/@]+:)[^@]+(@)", r"\1****\2", url or "")
 
+    @staticmethod
+    def _merge_keep_password(new_url: str, old_url: str) -> str:
+        """Replace the `:__KEEP__@` placeholder with the stored password, so
+        the panel can re-assemble URLs without ever receiving the plaintext."""
+        marker = ":__KEEP__@"
+        if marker not in new_url or not old_url:
+            return new_url
+        head, sep, rest = old_url.partition("://")
+        at = rest.rfind("@")
+        colon = rest.find(":")
+        if not sep or at == -1 or colon == -1 or colon > at:
+            return new_url
+        old_pwd = rest[colon + 1:at]
+        i = new_url.find(marker)
+        return new_url[:i + 1] + old_pwd + "@" + new_url[i + len(marker):]
+
     def add_camera(self, data: dict) -> dict:
         cameras = self.config.get_cameras()
         cid = str(data["id"]).strip()
         if not cid:
-            raise ValueError("相机 ID 不能为空")
+            raise ValueError("监控 ID 不能为空")
         if any(c.get("id") == cid for c in cameras):
-            raise ValueError(f"相机 ID 已存在: {cid}")
+            raise ValueError(f"监控 ID 已存在: {cid}")
+        if "__KEEP__@" in str(data.get("rtsp_url", "")):
+            raise ValueError("新增监控不能使用“保持原密码”占位，请填写密码")
         if not str(data.get("rtsp_url", "")).strip():
             raise ValueError("rtsp_url 不能为空")
         entry = {
@@ -296,14 +314,20 @@ class RuntimeState:
         cameras = self.config.get_cameras()
         target = next((c for c in cameras if c.get("id") == camera_id), None)
         if target is None:
-            raise ValueError(f"相机不存在: {camera_id}")
+            raise ValueError(f"监控不存在: {camera_id}")
 
+        old_url = target.get("rtsp_url", "")
         url_changed = ("rtsp_url" in data
-                       and str(data["rtsp_url"]).strip() != target.get("rtsp_url"))
+                       and str(data["rtsp_url"]).strip() != old_url)
         if "name" in data:
             target["name"] = str(data["name"])
         if "rtsp_url" in data and str(data["rtsp_url"]).strip():
-            target["rtsp_url"] = str(data["rtsp_url"]).strip()
+            new_url = str(data["rtsp_url"]).strip()
+            # 分段组装模式下密码留空 = 保持原密码
+            if "__KEEP__@" in new_url and old_url:
+                url_changed = self._merge_keep_password(new_url, old_url) != old_url
+                new_url = self._merge_keep_password(new_url, old_url)
+            target["rtsp_url"] = new_url
         if "rules" in data:
             target["rules"] = [int(r) for r in data["rules"]]
         if "enabled" in data:
@@ -697,8 +721,6 @@ class RuntimeState:
     # ------------------------------------------------------------------
 
     def rules_list(self) -> list:
-        from rules.rules_engine import PARAM_SPECS
-
         rules = self.rules_store.get_all()
         camera_usage = {}
         for cam in self.config.get_cameras():
@@ -711,8 +733,8 @@ class RuntimeState:
             ]
         # param names whose classes must exist in the bound models
         from_model_keys = {
-            p["name"] for spec in PARAM_SPECS.values() for p in spec["params"]
-            if p.get("from_model")
+            p["name"] for spec in self.template_specs().values()
+            for p in spec["params"] if p.get("from_model")
         }
         out = []
         for r in rules:
@@ -746,10 +768,10 @@ class RuntimeState:
         return out
 
     def add_rule(self, data: dict) -> dict:
-        from rules.rules_engine import PARAM_SPECS, RuleDefinition
+        from rules.rules_engine import RuleDefinition
 
         template = data.get("template")
-        if template not in PARAM_SPECS:
+        if template not in self.template_specs():
             raise ValueError(f"未知模板: {template}")
         rule = RuleDefinition(
             id=int(data.get("id") or self.rules_store.next_free_id()),
@@ -776,9 +798,44 @@ class RuntimeState:
         self.rules_store.delete(rule_id)
 
     def template_specs(self) -> dict:
-        from rules.rules_engine import get_template_specs
+        from rules.rules_engine import get_template_store
 
-        return get_template_specs()
+        return get_template_store(str(self.config_dir)).specs()
+
+    def template_logics(self) -> dict:
+        from rules.rules_engine import get_template_logics
+
+        return get_template_logics()
+
+    def create_template(self, data: dict) -> dict:
+        from rules.rules_engine import get_template_store
+
+        name = str(data.get("name") or "").strip()
+        get_template_store(str(self.config_dir)).add(
+            name,
+            {"label": data.get("label"), "logic": data.get("logic"),
+             "params": data.get("params") or []},
+        )
+        return {"name": name}
+
+    def update_template(self, name: str, data: dict) -> dict:
+        from rules.rules_engine import get_template_store
+
+        get_template_store(str(self.config_dir)).update(
+            name,
+            {"label": data.get("label"), "logic": data.get("logic"),
+             "params": data.get("params") or []},
+        )
+        return {"name": name}
+
+    def delete_template(self, name: str):
+        from rules.rules_engine import get_template_store
+
+        usage = [f"R{r.id}" for r in self.rules_store.get_all()
+                 if r.template == name]
+        if usage:
+            raise ValueError(f"模板仍被规则使用: {', '.join(usage)}，请先删除或改绑对应规则")
+        get_template_store(str(self.config_dir)).delete(name)
 
     # ------------------------------------------------------------------
     # Snapshots / storage

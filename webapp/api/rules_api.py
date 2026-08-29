@@ -18,6 +18,36 @@ def templates(request: Request):
     return {"templates": get_state(request).template_specs()}
 
 
+@router.get("/api/rules/template-logics")
+def template_logics(request: Request):
+    return {"logics": get_state(request).template_logics()}
+
+
+@router.post("/api/rules/templates")
+def add_template(request: Request, data: dict):
+    try:
+        return get_state(request).create_template(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.put("/api/rules/templates/{name}")
+def update_template(request: Request, name: str, data: dict):
+    try:
+        return get_state(request).update_template(name, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/api/rules/templates/{name}")
+def delete_template(request: Request, name: str):
+    try:
+        get_state(request).delete_template(name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
 @router.post("/api/rules")
 def add_rule(request: Request, data: dict):
     state = get_state(request)

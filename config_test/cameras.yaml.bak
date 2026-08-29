@@ -26,9 +26,3 @@ cameras:
   rtsp_url: "test_videos/bus.mp4"
   enabled: true
   rules: [1, 13, 14]
-- id: CAM_TEST_2
-  name: 热增测试
-  rtsp_url: test_videos/bus2.mp4
-  enabled: true
-  rules:
-  - 1
