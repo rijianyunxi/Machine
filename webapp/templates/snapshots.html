@@ -6,20 +6,16 @@
 {% endblock %}
 
 {% block content %}
-<div style="display:grid;grid-template-columns:300px 1fr;gap:16px" class="snap-layout">
-  <div class="card" style="align-self:start;position:sticky;top:96px">
-    <div class="card-title">按日期</div>
-    <div class="date-list" id="dates"></div>
+<div class="card">
+  <div class="card-title">
+    <span id="sel-title">快照</span>
+    <div class="date-strip" id="dates"></div>
   </div>
-  <div class="card">
-    <div class="card-title" id="sel-title">快照</div>
-    <div class="snap-grid" id="grid"></div>
-    <div style="text-align:center;margin-top:14px">
-      <button class="ghost" id="more-btn" style="display:none" onclick="loadMore(this)">加载更多</button>
-    </div>
+  <div class="snap-grid" id="grid"></div>
+  <div style="text-align:center;margin-top:14px">
+    <button class="ghost" id="more-btn" style="display:none" onclick="loadMore(this)">加载更多</button>
   </div>
 </div>
-<style>@media (max-width:900px){ .snap-layout{grid-template-columns:1fr !important} .snap-layout > .card:first-child{position:static !important} }</style>
 {% endblock %}
 
 {% block scripts %}
@@ -30,15 +26,18 @@ const PAGE = 200;
 async function refresh() {
   const data = await api("/api/snapshots");
   document.getElementById("dates").innerHTML = data.dates.map(d => `
-    <div class="d ${current === d.date ? "active" : ""}" onclick="pick('${d.date}')">
-      <b>${d.date}</b><span>${d.count} 张 · ${d.size_mb}MB</span>
-    </div>`).join("") || `<div class="empty"><p>暂无快照</p></div>`;
+    <div class="d ${current === d.date ? "active" : ""}"
+      title="${d.count} 张 · ${d.size_mb} MB" onclick="pick('${d.date}')">
+      <b>${d.date}</b>
+    </div>`).join("") || `<span class="muted">暂无快照</span>`;
   const active = data.dates.find(d => d.date === current) || data.dates[0];
   if (active) pick(active.date, true);
 }
 
 function pick(date, silent, offset = 0) {
   current = date;
+  document.querySelectorAll(".date-strip .d").forEach(d =>
+    d.classList.toggle("active", d.textContent.trim() === date));
   api(`/api/snapshots?date=${encodeURIComponent(date)}&offset=${offset}`)
     .then(data => {
     const d = data.dates[0];

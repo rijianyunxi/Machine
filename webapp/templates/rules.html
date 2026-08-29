@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}规则配置{% endblock %}
-{% block subtitle %}<p class="page-sub">规则即数据：参数 / 绑定模型 / 分配相机全部在线可调，下一帧生效</p>{% endblock %}
+{% block subtitle %}<p class="page-sub">规则即数据：参数 / 绑定模型 / 分配监控全部在线可调，下一帧生效</p>{% endblock %}
 {% block actions %}
 <button onclick="openEdit(null)">＋ 新建规则</button>
 {% endblock %}
@@ -9,7 +9,7 @@
 <div class="card">
   <div class="table-wrap"><table>
     <thead><tr>
-      <th>ID</th><th>名称</th><th>模板</th><th>绑定模型</th><th>使用相机</th>
+      <th>ID</th><th>名称</th><th>模板</th><th>绑定模型</th><th>使用监控</th>
       <th>7 天误报率</th><th>状态</th><th style="text-align:right">操作</th>
     </tr></thead>
     <tbody id="rows"></tbody>

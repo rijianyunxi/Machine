@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}检测测试台{% endblock %}
-{% block subtitle %}<p class="page-sub">上传图片或取相机当前帧，用已加载模型试跑；用于验证新导入模型</p>{% endblock %}
+{% block subtitle %}<p class="page-sub">上传图片或取监控当前帧，用已加载模型试跑；用于验证新导入模型</p>{% endblock %}
 
 {% block content %}
 <div class="grid row2">
@@ -12,7 +12,7 @@
     </div>
     <div class="toolbar" style="margin-top:12px">
       <select id="cam-pick"></select>
-      <button class="ghost" onclick="runCamFrame(this)">用相机当前帧</button>
+      <button class="ghost" onclick="runCamFrame(this)">用监控当前帧</button>
     </div>
     <div class="toolbar" style="margin-top:14px">
       <label style="margin:0;color:var(--muted)">conf 覆盖</label>
@@ -43,7 +43,7 @@ async function init() {
   const cams = await api("/api/cameras");
   document.getElementById("cam-pick").innerHTML = cams.cameras
     .filter(c => c.enabled).map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`)
-    .join("") || "<option value=''>无可用相机</option>";
+    .join("") || "<option value=''>无可用监控</option>";
   await loadModels();
 }
 
@@ -75,7 +75,7 @@ async function runTest(btn) {
 
 async function runCamFrame(btn) {
   const cam = document.getElementById("cam-pick").value;
-  if (!cam) return toast("无可用相机", false);
+  if (!cam) return toast("无可用监控", false);
   const conf = document.getElementById("conf").value;
   const qs = new URLSearchParams({ models: pickedModels() });
   if (conf !== "") qs.set("conf", conf);

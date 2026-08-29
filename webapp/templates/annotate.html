@@ -3,8 +3,8 @@
 {% block subtitle %}<p class="page-sub">画框标注 · 快捷键 1-9 选类别 / Del 删除 / ←→ 切图（自动保存）/ Ctrl+S 保存</p>{% endblock %}
 {% block actions %}
 <select id="ds-pick" style="min-width:180px" onchange="switchDs()"></select>
-<button class="ghost" onclick="aiPrelabel(this)">⚡ AI 预标注本图</button>
-<button class="ghost" onclick="aiSuggest(this)">✨ AI 建议</button>
+<button class="ghost" onclick="aiPrelabel(this)">⚡ YOLO 预标注</button>
+<button class="ghost" onclick="rerunAi(this)">✨ AI 识别</button>
 <button onclick="saveLabels(this)">保存 (Ctrl+S)</button>
 {% endblock %}
 
@@ -33,51 +33,35 @@
   </div>
 
   <!-- classes & boxes -->
-  <div class="stack">
+  <div class="stack" style="height:calc(100vh - 170px)">
     <div class="card" style="padding:14px">
       <div class="card-title" style="margin-bottom:8px">类别（按数字键选择）</div>
       <div class="inline-checks" id="class-list" style="flex-direction:column;align-items:flex-start;gap:6px"></div>
     </div>
-    <div class="card" style="padding:14px">
-      <div class="card-title" style="margin-bottom:8px"><span id="box-title">标注框</span> <span class="muted" id="box-count"></span></div>
-      <div class="feed" id="box-list" style="max-height:220px"></div>
-    </div>
-    <div class="card" style="padding:14px">
-      <div class="card-title" style="margin-bottom:8px">LLM 建议
-        <span class="muted" id="llm-state"></span></div>
-      <p class="muted" style="font-size:12px">点右上角「✨ AI 建议」，AI 的结果会在右侧面板展示，勾选后可应用（应用前可拖动/缩放微调）。</p>
+    <div class="card box-card" style="padding:14px">
+      <div class="tabs">
+        <button class="tab on" data-t="manual" onclick="setBoxTab('manual')">标注框 <span id="box-count"></span></button>
+        <button class="tab" data-t="ai" onclick="setBoxTab('ai')">AI 识别 <span id="ai-count"></span></button>
+      </div>
+      <div class="feed" id="box-list" style="flex:1;min-height:0;max-height:none"></div>
+      <button class="mini" id="promote-btn" style="display:none;width:100%;margin-top:8px"
+        onclick="promoteAi(this)">加入所选 (<span id="ai-n2">0</span>)</button>
+      <div id="ai-prompt-box" style="display:none;margin-top:10px">
+        <details class="ai-prompt-details" ontoggle="openPromptEditor(this)">
+          <summary title="默认折叠，点开可修改提示词">
+            <span>提示词</span>
+            <span class="mini ghost" style="margin-left:auto;padding:1px 8px"
+              onclick="event.preventDefault();resetPrompt()">恢复默认</span>
+          </summary>
+          <textarea id="ai-prompt" rows="4" spellcheck="false" oninput="autoGrowPrompt()"
+            placeholder="告诉 AI 要检测什么目标、输出格式要求…"></textarea>
+        </details>
+        <button class="mini" style="width:100%;margin-top:8px" onclick="rerunAi(this)">🔄 重新识别</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- AI assistant drawer -->
-<div class="ai-backdrop" id="ai-backdrop" onclick="toggleAiDrawer(false)"></div>
-<aside class="ai-drawer" id="ai-drawer">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-    <b style="font-size:14.5px">✨ AI 助手</b>
-    <span class="muted" id="ai-state" style="margin-left:auto"></span>
-    <button class="modal-x" onclick="toggleAiDrawer(false)">✕</button>
-  </div>
-  <details open style="margin-bottom:8px">
-    <summary style="cursor:pointer;color:var(--muted);font-size:12px">发送的提示词</summary>
-    <pre class="log" id="ai-prompt" style="max-height:150px;margin-top:6px">—</pre>
-  </details>
-  <details style="margin-bottom:8px">
-    <summary style="cursor:pointer;color:var(--muted);font-size:12px">模型原始返回</summary>
-    <pre class="log" id="ai-out" style="max-height:140px;margin-top:6px">—</pre>
-  </details>
-  <div class="card-title" style="margin:10px 0 8px">
-    建议框 <span class="muted" id="ai-n"></span></div>
-  <div id="ai-list" style="max-height:220px;overflow-y:auto">
-    <p class="muted" style="font-size:12px">还没有 AI 结果。点「✨ AI 建议」开始识别；勾选的框才会被应用。</p>
-  </div>
-  <div style="display:flex;gap:8px;margin-top:10px">
-    <button class="mini" style="flex:1" onclick="applyAi(this)">应用选中 (<span id="ai-n2">0</span>)</button>
-    <button class="mini ghost" onclick="abandonAi()">放弃</button>
-  </div>
-  <p class="muted" style="margin-top:10px;font-size:11.5px">
-    预览中手动标注已临时隐藏，AI 框可直接拖动 / 缩放 / 改类别（数字键）/ 删除（Del），微调后再应用。</p>
-</aside>
 <style>
 @media (max-width:1100px){ .anno-layout{grid-template-columns:1fr !important} }
 .anno-box{position:absolute;border:2px solid var(--accent);cursor:pointer;box-sizing:border-box}
@@ -90,6 +74,7 @@
 .anno-ghost{position:absolute;border:2px dashed var(--yellow);pointer-events:none}
 #boxes{position:absolute;inset:0;pointer-events:none}
 #boxes .anno-box{pointer-events:auto}
+#stage-wrap{margin:0 auto;width:fit-content}
 .anno-box.llm{border-style:dashed;border-color:var(--green)}
 .anno-box.llm .tag{background:var(--green);color:#04121f}
 .stage-loading{position:absolute;inset:0;z-index:20;display:grid;place-items:center;
@@ -103,19 +88,31 @@
 .cls-dot{width:13px;height:13px;border-radius:4px;flex-shrink:0;
   border:1px solid rgba(255,255,255,.25)}
 .llm-pv{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;
-  border:1px solid var(--border);margin-bottom:5px;font-size:12px}
-.llm-pv input{width:13px;height:13px}
+  border:1px solid var(--border);margin-bottom:5px;font-size:12px;cursor:pointer}
+.llm-pv:hover{background:var(--surface-3)}
+.llm-pv.dimmed{opacity:.45}
+.llm-pv.sel{border-color:var(--yellow);box-shadow:0 0 0 1px var(--yellow)}
+.llm-pv input{width:13px;height:13px;flex-shrink:0}
 .llm-pv .sw{width:11px;height:11px;border-radius:3px;flex-shrink:0;
   border:1px dashed var(--green);background:rgba(52,211,153,.15)}
-.ai-drawer{position:fixed;top:0;right:-380px;bottom:0;width:360px;max-width:92vw;
-  z-index:150;background:var(--surface-2);border-left:1px solid var(--border-strong);
-  box-shadow:var(--shadow);transition:right .25s ease;padding:16px;overflow-y:auto}
-.ai-drawer.open{right:0}
-.ai-backdrop{position:fixed;inset:0;background:rgba(4,8,16,.45);z-index:140;display:none}
-.ai-backdrop.open{display:block}
-.ai-badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:15;
-  background:var(--green-soft);border:1px solid var(--green);color:var(--green);
-  padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+#ai-prompt{width:100%;font-family:var(--mono);font-size:11.5px;line-height:1.55;
+  min-height:64px;resize:vertical;overflow:hidden;margin-top:8px}
+/* box card: fixed height, list scrolls, prompt docked at the bottom */
+.box-card{flex:1;min-height:0;display:flex;flex-direction:column}
+.ai-prompt-details{border:1px solid var(--border);border-radius:9px;
+  background:var(--surface);padding:7px 10px}
+.ai-prompt-details summary{cursor:pointer;font-size:12px;color:var(--text-2);
+  display:flex;align-items:center;gap:6px;list-style:none;white-space:nowrap}
+.ai-prompt-details summary::-webkit-details-marker{display:none}
+.ai-prompt-details summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.ai-prompt-details[open] summary::before{transform:rotate(90deg)}
+.ai-prompt-details[open] summary{margin-bottom:2px}
+.tabs{display:flex;gap:4px;margin-bottom:10px;background:var(--surface-2);
+  border-radius:9px;padding:3px}
+.tabs .tab{flex:1;background:transparent;border:none;color:var(--text-2);
+  padding:5px 8px;font-size:12px;font-weight:500;border-radius:7px}
+.tabs .tab:hover{color:var(--text);filter:none}
+.tabs .tab.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 </style>
 {% endblock %}
 
@@ -124,7 +121,7 @@
 const qs = new URLSearchParams(location.search);
 let ds = qs.get("ds") || "", images = [], idx = -1, boxes = [], classes = [],
     curCls = 0, sel = -1, dirty = false,
-    aiMode = false, manualBackup = null, dirtyBackup = false, llmPending = null,
+    boxTab = "manual",        /* which list the right card shows: manual | ai */
     loadingLabels = false;
 const stage = document.getElementById("stage-wrap");
 const imgEl = document.getElementById("stage-img");
@@ -190,7 +187,6 @@ function renderClasses() {
 /* ---------- load / save current image ---------- */
 
 async function jump(i, keepDirty = false) {
-  if (aiMode) return toast("AI 预览中，请先在右侧面板应用或放弃", false);
   if (dirty && !keepDirty) await saveLabels(null, true);
   idx = i; sel = -1;
   if (idx < 0 || idx >= images.length) { idx = images.length ? 0 : -1; }
@@ -213,18 +209,17 @@ function highlightThumb() {
 }
 
 async function saveLabels(btn, silent = false) {
-  if (aiMode) return toast("AI 预览中不可保存，请先应用或放弃建议框", false);
   if (idx < 0 || !dirty) return;
   const im = images[idx];
+  const manual = boxes.filter(b => !b._ai);   // AI suggestions are not saved
   await api(`/api/datasets/${encodeURIComponent(ds)}/labels/${esc(im.stem)}`,
-    { method: "PUT", body: { boxes } });
-  dirty = false; im.labeled = boxes.length > 0; im.boxes = boxes.length;
-  if (!silent) toast(`已保存 ${boxes.length} 个框`);
+    { method: "PUT", body: { boxes: manual } });
+  dirty = false; im.labeled = manual.length > 0;
+  if (!silent) toast(`已保存 ${manual.length} 个框`);
   renderBoxList();
 }
 
 async function nav(d) {
-  if (aiMode) return toast("AI 预览中，请先在右侧面板应用或放弃", false);
   if (!images.length) return;
   const next = Math.min(Math.max(idx + d, 0), images.length - 1);
   if (next === idx) return;
@@ -234,29 +229,59 @@ async function nav(d) {
 /* ---------- box rendering & editing ---------- */
 
 function renderBoxes() {
-  boxLayer.innerHTML = boxes.map((b, i) => {
-    const x = (b.x - b.w / 2) * 100, y = (b.y - b.h / 2) * 100;
-    const name = classes[b.cls] ?? `cls${b.cls}`;
-    const col = clsColor(b.cls);
-    const dim = aiMode && llmPending?.[i] && !llmPending[i].checked;
-    return `<div class="anno-box ${i === sel ? "sel" : ""}" data-i="${i}"
-      style="left:${x}%;top:${y}%;width:${b.w * 100}%;height:${b.h * 100}%;border-color:${col};
-      ${dim ? "opacity:.25" : ""}">
-      <span class="tag" style="background:${col}">${b.cls}:${esc(name)}</span><span class="rz"></span></div>`;
-  }).join("");
-  // position layer to match rendered image
+  // position layer to match rendered image (needed for tag clamping below)
   const r = imgEl.getBoundingClientRect(), pr = stage.getBoundingClientRect();
   boxLayer.style.left = (r.left - pr.left) + "px";
   boxLayer.style.top = (r.top - pr.top) + "px";
   boxLayer.style.width = r.width + "px";
   boxLayer.style.height = r.height + "px";
+  // the canvas follows the active tab: manual boxes on 标注框, AI boxes on AI 识别
+  const shown = boxes
+    .map((b, i) => ({ b, i }))
+    .filter(x => boxTab === "ai" ? !!x.b._ai : !x.b._ai);
+  boxLayer.innerHTML = shown.map(({ b, i }) => {
+    const x = (b.x - b.w / 2) * 100, y = (b.y - b.h / 2) * 100;
+    const name = classes[b.cls] ?? `cls${b.cls}`;
+    const col = clsColor(b.cls);
+    // tags above a box at the very top of the image would get clipped
+    const tagInside = (b.y - b.h / 2) * r.height < 22;
+    return `<div class="anno-box ${b._ai ? "llm" : ""} ${i === sel ? "sel" : ""}" data-i="${i}"
+      style="left:${x}%;top:${y}%;width:${b.w * 100}%;height:${b.h * 100}%;border-color:${col};
+      ${b._ai && !b._aiChecked ? "opacity:.3" : ""}">
+      <span class="tag" style="background:${col};${tagInside ? "top:2px" : ""}">${b.cls}:${esc(name)}</span><span class="rz"></span></div>`;
+  }).join("");
 }
 window.addEventListener("resize", renderBoxes);
 imgEl.addEventListener("load", renderBoxes);
 
 function renderBoxList() {
-  document.getElementById("box-count").textContent = boxes.length;
-  document.getElementById("box-list").innerHTML = boxes.map((b, i) => `
+  const manual = boxes.map((b, i) => ({ b, i })).filter(x => !x.b._ai);
+  const ai = boxes.map((b, i) => ({ b, i })).filter(x => x.b._ai);
+  document.getElementById("box-count").textContent = manual.length;
+  document.getElementById("ai-count").textContent = ai.length;
+  const list = document.getElementById("box-list");
+  const showAi = boxTab === "ai";
+  document.getElementById("ai-prompt-box").style.display = showAi ? "" : "none";
+  const promote = document.getElementById("promote-btn");
+  promote.style.display = showAi && ai.length ? "" : "none";
+  if (showAi) {
+    const n = ai.filter(x => x.b._aiChecked).length;
+    document.getElementById("ai-n2").textContent = n;
+    list.innerHTML = ai.map(({ b, i }) => {
+      const name = classes[b.cls] ?? `cls${b.cls}`;
+      return `<div class="llm-pv ${b._aiChecked ? "" : "dimmed"} ${i === sel ? "sel" : ""}"
+        onclick="sel=${i};renderBoxes();renderBoxList()">
+        <input type="checkbox" ${b._aiChecked ? "checked" : ""}
+          onclick="event.stopPropagation()"
+          onchange="boxes[${i}]._aiChecked=this.checked;renderBoxList();renderBoxes()">
+        <span class="cls-dot" style="background:${clsColor(b.cls)}"></span>
+        <span>${esc(name)}</span>
+        <span class="muted mono" style="margin-left:auto">${(b.w * 100).toFixed(0)}×${(b.h * 100).toFixed(0)}</span>
+      </div>`;
+    }).join("") || '<p class="muted" style="font-size:12px">还没有 AI 识别结果。编辑提示词后点「重新识别」，勾选后再「加入所选」。</p>';
+    return;
+  }
+  list.innerHTML = manual.map(({ b, i }) => `
     <div class="item" style="cursor:pointer;${i === sel ? "color:var(--yellow)" : ""}"
       onclick="sel=${i};renderBoxes();renderBoxList()">
       <span class="cls-dot" style="background:${clsColor(b.cls)}"></span>
@@ -265,6 +290,35 @@ function renderBoxList() {
       <button class="mini danger" style="padding:1px 7px"
         onclick="event.stopPropagation();delBox(${i})">✕</button>
     </div>`).join("") || '<p class="muted">暂无标注框，在图上拖拽画框</p>';
+}
+
+function setBoxTab(t) {
+  boxTab = t;
+  const cur = boxes[sel];
+  if (cur && ((t === "ai") !== !!cur._ai)) sel = -1;   // selection belongs to the other tab
+  syncTabs();
+  renderBoxList();
+  renderBoxes();          // canvas dim state follows the checked boxes
+  if (t === "ai") autoGrowPrompt();
+}
+
+function syncTabs() {
+  document.querySelectorAll(".tabs .tab").forEach(b =>
+    b.classList.toggle("on", b.dataset.t === boxTab));
+}
+
+/* checked AI suggestions become regular boxes; unchecked ones are discarded */
+function promoteAi() {
+  const keep = boxes.filter(b => b._ai && b._aiChecked);
+  if (!keep.length) return toast("先勾选要加入的建议框", false);
+  boxes = boxes
+    .filter(b => !b._ai || b._aiChecked)
+    .map(b => b._ai ? { cls: b.cls, x: b.x, y: b.y, w: b.w, h: b.h } : b);
+  dirty = true; sel = -1;
+  boxTab = "manual";
+  syncTabs();
+  renderBoxes(); renderBoxList();
+  toast(`已加入 ${keep.length} 个 AI 框（记得保存）`);
 }
 
 function markDirty() { dirty = true; }
@@ -331,6 +385,8 @@ document.addEventListener("mouseup", () => {
     if (c && c.w > 0.01 && c.h > 0.01) {
       boxes.push({ cls: curCls, x: c.x, y: c.y, w: c.w, h: c.h });
       sel = boxes.length - 1; markDirty();
+      // hand-drawn boxes are manual ones — show them on the 标注框 tab
+      if (boxTab !== "manual") { boxTab = "manual"; syncTabs(); renderBoxList(); }
     }
   } else markDirty();
   drag = null; renderBoxes(); renderBoxList();
@@ -362,7 +418,6 @@ function showStageLoading(text) {
 }
 
 async function aiPrelabel(btn) {
-  if (aiMode) return toast("AI 预览中，请先应用或放弃", false);
   if (idx < 0) return toast("先选择图片", false);
   if (loadingLabels) return toast("图片标注加载中，请稍候", false);
   const ov = showStageLoading("本地模型推理中…");
@@ -417,7 +472,7 @@ function classIdOf(name) {
   return i >= 0 ? i : 0;
 }
 
-/* ---------- AI 建议：右侧抽屉 + 预览模式 ---------- */
+/* ---------- AI 识别 ---------- */
 
 function llmPrompt() {
   const allowed = classes.map((c, i) => `${i}:${c}`).join(", ");
@@ -427,127 +482,69 @@ function llmPrompt() {
     "，x/y 为框中心点、w/h 为框宽高，均按图片尺寸归一化到 0~1。图中没有这些类别目标时输出 []。";
 }
 
-function toggleAiDrawer(open) {
-  const o = open === undefined ? !document.getElementById("ai-drawer").classList.contains("open") : open;
-  document.getElementById("ai-drawer").classList.toggle("open", o);
-  document.getElementById("ai-backdrop").classList.toggle("open", o);
+/* grow the prompt box with its content so no line is ever clipped */
+function autoGrowPrompt() {
+  const ta = document.getElementById("ai-prompt");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(Math.max(ta.scrollHeight, 64), 240) + "px";
 }
 
-function setAiState(t) {
-  const el = document.getElementById("ai-state");
-  if (el) el.textContent = t || "";
+/* details 展开/预填：折叠时提示词不占空间，展开时预填默认并自适应 */
+function openPromptEditor(d) {
+  if (!d.open) return;
+  const ta = document.getElementById("ai-prompt");
+  if (!ta.value.trim()) ta.value = llmPrompt();
+  autoGrowPrompt();
 }
 
-async function aiSuggest(btn) {
-  // already previewing -> just reopen the drawer
-  if (aiMode) return toggleAiDrawer(true);
+function resetPrompt() {
+  const ta = document.getElementById("ai-prompt");
+  ta.value = llmPrompt();
+  autoGrowPrompt();
+}
+
+async function fetchImageB64(im) {
+  const blob = await fetch(
+    `/api/datasets/${encodeURIComponent(ds)}/image/${esc(im.file)}`).then(r => r.blob());
+  return new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result); fr.readAsDataURL(blob);
+  });
+}
+
+/* ✨ AI 识别 button / 识别 button: run the LLM with the prompt in the AI tab.
+ * Results land in the AI 识别 tab as dashed boxes (unchecked = dimmed);
+ * the current manual boxes stay on the image untouched. */
+async function rerunAi(btn) {
   if (idx < 0) return toast("先选择图片", false);
   if (loadingLabels) return toast("图片标注加载中，请稍候", false);
-  if (btn.disabled) return;
-  btn.disabled = true; btn.classList.add("loading");
-  toggleAiDrawer(true);
-  setAiState("请求中…");
-  document.getElementById("ai-prompt").textContent = llmPrompt();
-  document.getElementById("ai-out").textContent = "…";
-  const ov = showStageLoading("AI 识别中…");
-  let secs = 0;
-  const timer = setInterval(() => {
-    secs += 1;
-    ov.querySelector(".lv").textContent = `AI 识别中… ${secs}s`;
-    setAiState(`识别中 ${secs}s`);
-  }, 1000);
-  try {
-    const im = images[idx];
-    const blob = await fetch(`/api/datasets/${encodeURIComponent(ds)}/image/${esc(im.file)}`).then(r => r.blob());
-    const b64 = await new Promise(res => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result); fr.readAsDataURL(blob);
-    });
-    const r = await api("/api/llm/chat", { method: "POST", body: {
-      prompt: llmPrompt(), image: b64, classes } });
-    document.getElementById("ai-out").textContent = r.text || "(空响应)";
-    if (r.boxes?.length) {
-      enterAiPreview(r.boxes);
-      setAiState(`${r.boxes.length} 个建议`);
-      toast(`AI 给出 ${r.boxes.length} 个建议框，勾选后应用（可先微调）`);
-    } else {
-      setAiState("无结果");
-      toast("AI 未返回可用框，可参考其文本说明");
-    }
-  } catch (e) {
-    setAiState("失败");
-    toast(e.message, false);
-  }
-  finally {
-    clearInterval(timer); ov.remove();
-    btn.disabled = false; btn.classList.remove("loading");
-  }
-}
-
-/* enter preview: manual boxes hidden, AI boxes become editable */
-function enterAiPreview(aiBoxes) {
-  manualBackup = boxes;
-  dirtyBackup = dirty;
-  boxes = aiBoxes.map(b => ({ ...b }));
-  llmPending = boxes.map(() => ({ checked: true }));
-  aiMode = true; sel = -1; dirty = false;
-  const badge = document.createElement("div");
-  badge.className = "ai-badge"; badge.id = "ai-badge";
-  badge.textContent = "AI 预览模式 · 手动标注已隐藏";
-  stage.appendChild(badge);
-  document.getElementById("box-title").textContent = "AI 建议框";
-  renderBoxes(); renderBoxList(); renderAiList();
-}
-
-function exitAiPreview() {
-  const badge = document.getElementById("ai-badge");
-  if (badge) badge.remove();
-  aiMode = false; manualBackup = null; llmPending = null; sel = -1;
-  document.getElementById("box-title").textContent = "标注框";
-}
-
-function applyAi(btn) {
-  if (!aiMode) return;
-  const kept = boxes.filter((b, i) => llmPending[i]?.checked);
-  boxes = manualBackup.concat(kept);
-  dirty = true;
-  exitAiPreview();
-  renderBoxes(); renderBoxList();
-  toast(`已应用 ${kept.length} 个 AI 框（记得保存）`);
-}
-
-function abandonAi() {
-  if (!aiMode) return;
-  boxes = manualBackup;
-  dirty = dirtyBackup;
-  exitAiPreview();
-  renderBoxes(); renderBoxList();
-  toast("已放弃 AI 建议，手动标注已恢复");
-}
-
-function renderAiList() {
-  const list = document.getElementById("ai-list");
-  if (!aiMode || !llmPending?.length) {
-    list.innerHTML = '<p class="muted" style="font-size:12px">还没有 AI 结果。点「✨ AI 建议」开始识别；勾选的框才会被应用。</p>';
-    document.getElementById("ai-n").textContent = "";
-    document.getElementById("ai-n2").textContent = "0";
-    return;
-  }
-  const n = llmPending.filter(p => p.checked).length;
-  document.getElementById("ai-n").textContent = `${n}/${llmPending.length} 已选`;
-  document.getElementById("ai-n2").textContent = n;
-  list.innerHTML = llmPending.map((p, i) => {
-    const b = boxes[i];
-    if (!b) return "";
-    const name = classes[b.cls] ?? `cls${b.cls}`;
-    return `<div class="llm-pv">
-      <input type="checkbox" ${p.checked ? "checked" : ""}
-        onchange="llmPending[${i}].checked=this.checked;renderAiList();renderBoxes()">
-      <span class="cls-dot" style="background:${clsColor(b.cls)}"></span>
-      <span>${esc(name)}</span>
-      <span class="muted mono" style="margin-left:auto">${(b.w * 100).toFixed(0)}×${(b.h * 100).toFixed(0)}</span>
-    </div>`;
-  }).join("");
+  let ta = document.getElementById("ai-prompt");
+  if (!ta.value.trim()) ta.value = llmPrompt();
+  const prompt = ta.value.trim();
+  await withLoading(btn, async () => {
+    const ov = showStageLoading("AI 识别中…");
+    let secs = 0;
+    const timer = setInterval(() => {
+      secs += 1;
+      ov.querySelector(".lv").textContent = `AI 识别中… ${secs}s`;
+    }, 1000);
+    try {
+      const im = images[idx];
+      const b64 = await fetchImageB64(im);
+      const r = await api("/api/llm/chat",
+        { method: "POST", body: { prompt, image: b64, classes } });
+      if (r.boxes?.length) {
+        boxes = boxes.filter(b => !b._ai);   // replace previous suggestions
+        r.boxes.forEach(b => boxes.push({ ...b, _ai: true, _aiChecked: true }));
+        boxTab = "ai";
+        setBoxTab("ai");
+        toast(`AI 识别出 ${r.boxes.length} 个框，勾选后「加入所选」`);
+      } else {
+        toast("AI 未返回可用框，可修改提示词后重试", false);
+      }
+    } catch (e) { toast(e.message, false); }
+    finally { clearInterval(timer); ov.remove(); }
+  });
 }
 
 init();

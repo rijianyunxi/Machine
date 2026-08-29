@@ -504,16 +504,20 @@ pre.log .INFO { color: #64748b; }
 .stat .v.alerting { color: var(--red); }
 
 /* date list (snapshots) */
-.date-list { display: flex; flex-direction: column; gap: 4px; }
-.date-list .d {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding: 9px 12px; border-radius: 9px; cursor: pointer;
+/* horizontal date selector (snapshot gallery header) */
+.date-strip {
+  display: flex; gap: 6px;
+  max-width: 68%; overflow-x: auto; padding: 2px;
+}
+.date-strip .d {
+  flex-shrink: 0; cursor: pointer;
+  padding: 5px 14px; border-radius: 9px;
   border: 1px solid transparent; transition: background 0.12s;
 }
-.date-list .d:hover { background: var(--surface-2); }
-.date-list .d.active { background: var(--accent-soft); border-color: rgba(77, 159, 255, 0.3); }
-.date-list .d b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.date-list .d span { color: var(--muted); font-size: 11.5px; }
+.date-strip .d:hover { background: var(--surface-2); }
+.date-strip .d.active { background: var(--accent-soft); border-color: rgba(77, 159, 255, 0.3); }
+.date-strip .d b { font-weight: 600; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.date-strip .d span { color: var(--muted); font-size: 10.5px; }
 
 /* model cards */
 .model-card {

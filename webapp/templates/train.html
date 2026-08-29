@@ -30,20 +30,22 @@
       一次只跑一个训练任务。</p>
   </div>
 
-  <div class="card">
-    <div class="card-title">训练状态 <span class="muted" id="st-name"></span></div>
-    <div id="status">尚未启动训练</div>
-    <div class="card-title" style="margin-top:16px;margin-bottom:8px">日志（尾部）</div>
-    <pre class="log" id="train-log" style="max-height:200px">—</pre>
-  </div>
-</div>
+  <div class="stack">
+    <div class="card">
+      <div class="card-title">训练状态 <span class="muted" id="st-name"></span></div>
+      <div id="status">尚未启动训练</div>
+      <div class="card-title" style="margin-top:16px;margin-bottom:8px">日志（尾部）</div>
+      <pre class="log" id="train-log" style="max-height:200px">—</pre>
+    </div>
 
-<div class="card" style="margin-top:16px">
-  <div class="card-title">历史产物（best.pt 可注册为模型）</div>
-  <div class="table-wrap"><table>
-    <thead><tr><th>任务</th><th>best.pt</th><th>大小</th><th style="text-align:right">操作</th></tr></thead>
-    <tbody id="runs"></tbody>
-  </table></div>
+    <div class="card">
+      <div class="card-title">历史产物 <span class="muted">best.pt 可注册为模型</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>任务</th><th>best.pt</th><th>大小</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody id="runs"></tbody>
+      </table></div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -66,10 +68,15 @@ async function init() {
 }
 
 function renderRuns(runs) {
+  const shortPath = p => {
+    const parts = String(p).split("/");
+    return parts.length > 2 ? "…/" + parts.slice(-2).join("/") : p;
+  };
   document.getElementById("runs").innerHTML = runs.map(r => `
     <tr><td class="mono">${esc(r.name)}</td>
-      <td class="mono" style="font-size:11px">${esc(r.best)}</td>
-      <td>${r.size_mb} MB</td>
+      <td class="mono" style="font-size:11px;max-width:150px;overflow:hidden;
+        text-overflow:ellipsis;white-space:nowrap" title="${esc(r.best)}">${esc(shortPath(r.best))}</td>
+      <td style="white-space:nowrap">${r.size_mb} MB</td>
       <td style="text-align:right">
         <button class="mini" onclick="register('${esc(r.name)}', this)">注册为模型</button>
       </td></tr>`).join("")

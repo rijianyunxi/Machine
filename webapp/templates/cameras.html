@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}相机管理{% endblock %}
-{% block subtitle %}<p class="page-sub">新增 / 编辑即时热生效，无需重启检测程序</p>{% endblock %}
+{% block title %}监控管理{% endblock %}
+{% block subtitle %}<p class="page-sub">新增 / 编辑即时热生效，无需重启检测程序；点击预览缩略图看实时画面</p>{% endblock %}
 {% block actions %}
-<button onclick="openEdit(null, this)">＋ 新增相机</button>
+<button onclick="openEdit(null)">＋ 新增监控</button>
 {% endblock %}
 
 {% block content %}
 <div class="card">
   <div class="table-wrap"><table>
     <thead><tr>
-      <th>状态</th><th>ID / 名称</th><th>地址</th><th>规则</th>
+      <th>状态</th><th>预览</th><th>ID / 名称</th><th>地址</th><th>规则</th>
       <th>已采帧</th><th>最后帧龄</th><th style="text-align:right">操作</th>
     </tr></thead>
     <tbody id="rows"></tbody>
@@ -18,11 +18,11 @@
 
 <div class="modal-mask" id="modal">
   <div class="modal">
-    <div class="modal-h"><h3 id="m-title">新增相机</h3>
+    <div class="modal-h"><h3 id="m-title">新增监控</h3>
       <button class="modal-x" onclick="closeModal()">✕</button></div>
     <div class="modal-b">
       <div class="form-grid">
-        <div><label>相机 ID（唯一，保存后不可改）</label>
+        <div><label>监控 ID（唯一，保存后不可改）</label>
           <input id="f-id" class="w240" placeholder="CAM_001"></div>
         <div><label>名称</label>
           <input id="f-name" class="w240" placeholder="车间北门"></div>
@@ -32,12 +32,26 @@
       <label>启用规则（多选）</label>
       <div class="inline-checks" id="f-rules"></div>
       <label style="display:flex;align-items:center;gap:8px;color:var(--text);margin-top:14px;cursor:pointer">
-        <input type="checkbox" id="f-enabled" checked> 启用该相机
+        <input type="checkbox" id="f-enabled" checked> 启用该监控
       </label>
     </div>
     <div class="modal-f">
       <button class="ghost" onclick="closeModal()">取消</button>
       <button id="save-btn" onclick="saveCamera(this)">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="preview-modal">
+  <div class="modal" style="width:780px">
+    <div class="modal-h"><h3 id="pv-title">实时预览</h3>
+      <button class="modal-x" onclick="closePreview()">✕</button></div>
+    <div class="modal-b" style="line-height:0">
+      <img id="pv-stream" style="width:100%;border-radius:10px;display:block;background:var(--surface-2)">
+    </div>
+    <div class="modal-f">
+      <span class="muted" style="margin-right:auto">MJPEG 实时流 · 约每路 2fps</span>
+      <button class="ghost" onclick="closePreview()">关闭</button>
     </div>
   </div>
 </div>
@@ -60,8 +74,16 @@ function render(cams) {
   document.getElementById("rows").innerHTML = cams.cameras.map(c => `
     <tr>
       <td>${connectedBadge(c)}</td>
+      <td style="width:150px">
+        ${c.enabled && c.connected
+          ? `<img class="thumb" style="cursor:zoom-in"
+               src="/api/cameras/${esc(c.id)}/frame.jpg?t=${Date.now()}"
+               onclick="openPreview('${esc(c.id)}', '${esc(c.name)}')"
+               onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-fallback',textContent:'暂无画面'}))">`
+          : `<div class="thumb-fallback">${c.enabled ? "无画面" : "已停用"}</div>`}
+      </td>
       <td><b>${esc(c.id)}</b><div class="muted" style="font-size:12px">${esc(c.name)}</div></td>
-      <td class="mono" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.url)}">${esc(c.url)}</td>
+      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.url)}">${esc(c.url)}</td>
       <td>${(c.rules || []).map(r => badge("R" + String(r).padStart(2, "0"), "blue")).join(" ") || '<span class="muted">未分配</span>'}</td>
       <td class="mono">${c.frames_captured ?? "—"}</td>
       <td class="mono">${c.frame_age != null ? c.frame_age + "s" : "—"}</td>
@@ -71,14 +93,14 @@ function render(cams) {
         <button class="mini danger" onclick="delCam('${esc(c.id)}', this)">删除</button>
       </td>
     </tr>`).join("")
-    || `<tr><td colspan="7"><div class="empty"><p>尚未配置相机</p></div></td></tr>`;
+    || `<tr><td colspan="8"><div class="empty"><p>尚未配置监控</p></div></td></tr>`;
 }
 
 function openEdit(id) {
   editing = id;
   api("/api/cameras").then(({ cameras }) => {
     const cam = cameras.find(c => c.id === id);
-    document.getElementById("m-title").textContent = id ? `编辑相机 · ${id}` : "新增相机";
+    document.getElementById("m-title").textContent = id ? `编辑监控 · ${id}` : "新增监控";
     document.getElementById("f-id").value = cam?.id || "";
     document.getElementById("f-id").disabled = !!id;
     document.getElementById("f-name").value = cam?.name || "";
@@ -94,6 +116,17 @@ function openEdit(id) {
   });
 }
 function closeModal() { document.getElementById("modal").classList.remove("open"); }
+
+function openPreview(id, name) {
+  document.getElementById("pv-title").textContent = `实时预览 · ${name || id}`;
+  document.getElementById("pv-stream").src =
+    `/api/cameras/${encodeURIComponent(id)}/stream.mjpg`;
+  document.getElementById("preview-modal").classList.add("open");
+}
+function closePreview() {
+  document.getElementById("pv-stream").src = "";   // 断开 MJPEG 流
+  document.getElementById("preview-modal").classList.remove("open");
+}
 
 async function saveCamera(btn) {
   const urlField = document.getElementById("f-url").value;
@@ -121,7 +154,7 @@ async function restartCam(id, btn) {
   });
 }
 async function delCam(id, btn) {
-  if (!await confirmDialog(`确认删除相机 ${id}？将同时从 cameras.yaml 移除，历史告警保留。`)) return;
+  if (!await confirmDialog(`确认删除监控 ${id}？将同时从 cameras.yaml 移除，历史告警保留。`)) return;
   await withLoading(btn, async () => {
     try { await api(`/api/cameras/${encodeURIComponent(id)}`, { method: "DELETE" }); toast("已删除"); refresh(); }
     catch (e) { toast(e.message, false); }

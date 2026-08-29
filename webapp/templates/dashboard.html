@@ -6,9 +6,9 @@
 <div id="watermark"></div>
 
 <div class="grid cards">
-  <div class="stat link" onclick="location.href='/cameras'" title="进入相机管理">
+  <div class="stat link" onclick="location.href='/cameras'" title="进入监控管理">
     <div class="ico" id="s-cams-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-    <div><div class="k">相机状态</div><div class="v" id="c-cameras">—</div><div class="sub" id="c-cameras-sub"></div></div>
+    <div><div class="k">监控状态</div><div class="v" id="c-cameras">—</div><div class="sub" id="c-cameras-sub"></div></div>
   </div>
   <div class="stat link" onclick="location.href='/alerts'" title="查看告警记录">
     <div class="ico" id="s-alerts-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
@@ -50,7 +50,7 @@
 
 <div class="card" style="margin-top:16px">
   <div class="card-title">
-    <span>相机画面 <span class="muted">异常相机置顶 · 点击画面进入相机管理</span></span>
+    <span>监控画面 <span class="muted">异常监控置顶 · 点击画面进入监控管理</span></span>
     <span class="cam-head">
       <span class="muted" id="cam-summary"></span>
       <span class="seg" id="cam-seg">
@@ -112,15 +112,15 @@ function renderCams(cams) {
   box.innerHTML = "";
   if (!list.length) {
     box.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${
-      camFilter === "issue" ? "没有离线或重连中的相机" :
-      "尚未配置相机，去「相机管理」新增一路"}</p></div>`;
+      camFilter === "issue" ? "没有离线或重连中的监控" :
+      "尚未配置监控，去「监控管理」新增一路"}</p></div>`;
     return;
   }
   list.forEach(c => {
     const fig = document.createElement("figure");
     fig.className = "cam";
     fig.dataset.id = c.id;
-    fig.title = "进入相机管理";
+    fig.title = "进入监控管理";
     fig.onclick = () => location.href = "/cameras";
     const media = c.enabled && c.connected
       ? `<img class="thumb" alt="${esc(c.name)}">`
