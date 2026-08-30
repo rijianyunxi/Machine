@@ -1,82 +1,107 @@
 # Machine · 机器视觉不安全行为检测系统
 
-工地不安全行为检测系统（YOLOv8）：RTSP 监控取流 → 多模型检测 → 规则判定 → 快照/告警入库，
-带中文 Web 管理面板（端口 8000）。
+接入 RTSP 监控摄像头，用 YOLOv8 模型自动识别不安全行为并告警。
+中文 Web 管理面板：上传模型 → 配置规则 → 绑定监控，全程在浏览器里完成，不需要改代码。
 
-## 快速开始
+## 快速开始（3 步）
 
 ```bash
-# 1. 安装依赖（uv 环境）
+# 1. 安装依赖
 uv pip install -r requirements.txt --python .venv/bin/python
 
-# 2. 配置监控
-#    编辑 config/cameras.yaml，填入 RTSP 地址和启用的规则 ID
-
-# 3. 启动（检测 + 面板一起跑）
+# 2. 启动（检测 + 面板一起跑）
 source .venv/bin/activate
 python main.py
-#    面板: http://localhost:8000  默认账号 admin / admin（config/settings.yaml 可改）
+
+# 3. 浏览器打开面板
+#    http://localhost:8000   默认账号 admin / admin（可在 config/settings.yaml 修改）
 ```
 
-## 没有摄像头也能开发
+## 配置一个新检测（全程面板操作，零代码）
 
-```bash
-# 生成测试视频（取自 ultralytics 自带样例图）
-python scripts/make_test_video.py
+以「检测门口是否有猫」为例，任何目标检测模型同理：
 
-# 用测试配置跑（真实监控已置为停用，另有本地视频监控 CAM_TEST_1）
-python main.py --config config_test
-```
+1. **上传模型**：「模型管理」→ 选择 .pt 文件 → 上传 → 注册并启用。
+   模型的识别类目会自动进入系统（官方 yolov8n.pt 就能识别猫/狗/车等 80 类）。
+2. **新建规则**：「规则配置」→ ＋新建规则 →
+   选**何时告警**（如「出现即告警」）→ 从模型类目里**点选**目标（如 cat）→ 设阈值 → 保存。
+3. **绑定监控**：「监控管理」→ 编辑摄像头 → 勾选这条规则 → 保存。
+
+下一帧画面即生效，改规则、停用、删除同样即时热生效。
+
+### 内置三种「何时告警」
+
+| 判定逻辑 | 什么情况算违规 | 典型场景 |
+|----------|----------------|----------|
+| 出现即告警 | 画面中出现所选类别 | 门口有猫、出现明火、打电话 |
+| 靠近人员才告警 | 所选类别检出且贴着人员 | 手上有烟头（地上的不算） |
+| 装备缺失检查 | 人员没戴该戴的装备 | 未戴安全帽、未穿反光衣 |
+
+> 需要新的判定方式（如"闯入画出的区域"）时需要开发扩展；
+> 类别、阈值、模型、摄像头绑定永远不需要。
 
 ## 面板功能
 
 | 页面 | 功能 |
 |------|------|
 | 总览 | 监控在线状态、实时告警流、7 天趋势、磁盘水位 |
-| 监控管理 | 增删改/启停/重连，**全部热生效**（不重启主程序） |
-| 模型管理 | .pt 上传 → 后台校验 → 注册 → 热加载；阈值热更；类别表 `0:Hardhat` 格式展示 |
+| 监控管理 | 增删改/启停/重连/实时预览，**全部热生效**（不重启主程序） |
+| 模型管理 | .pt 上传 → 后台校验 → 注册 → 热加载；置信度阈值热更 |
 | 数据集 | YOLO 格式：新建 / 上传图片 / 从快照导入 / AI 批量预标注 |
-| 在线标注 | 画框标注（拖拽/移动/缩放），快捷键 1-9 选类别、Del 删除、←→ 切图自动保存；**AI 预标注**（本地模型）与 **LLM 建议**（视觉大模型识别，可解析 JSON 框应用） |
+| 在线标注 | 拖拽画框标注，快捷键 1-9 选类别、Del 删除、←→ 切图自动保存；本地模型预标注 + LLM 视觉识别辅助 |
 | 模型训练 | 选数据集 + 基础模型在线训练（子进程，崩溃不影响检测），实时进度/日志，完成后一键注册 best.pt |
-| 规则配置 | 规则模板化在线编辑（参数/绑定模型/分配监控），存 `config/rules.yaml` |
+| 规则配置 | 规则在线增删改（判定逻辑/类别/阈值/严重度），存 `config/rules.yaml` |
 | 检测测试台 | 上传图片（或取监控帧）用已加载模型试跑，出标注图+JSON |
 | 告警记录 | 筛选/分页、确认违规 / 误报标记 / 完结、误报率统计 |
 | 快照库 | 按日期/规则浏览，每日量与体积，手动清理 |
-| 系统设置 | settings.yaml 全部可改段落 + **LLM 配置**（OpenAI 兼容 base_url/api_key/model，带测试连接） |
+| 系统设置 | settings.yaml 全部可改段落 + LLM 配置（OpenAI 兼容接口，带测试连接） |
 | 日志 | 实时 tail + 级别过滤 |
 
-> LLM 用于标注辅助：在「系统设置 → 大模型 (LLM)」配置 OpenAI 兼容接口并启用，
-> 标注页即可用「LLM 建议」让视觉大模型识别目标，能解析其返回的 JSON 框直接应用。
-
-独立只读模式（主程序没开也能看历史 + 用测试台）：
+## 部署与运维
 
 ```bash
+# 生产启动（建议用进程守护，如 systemd / supervisor）
+python main.py                     # 检测 + 面板，端口见 config/settings.yaml 的 panel 段
+
+# 独立只读面板（主程序没开也能看历史告警 + 检测测试台）
 python -m webapp.server --config config
 ```
 
-## 规则 ID 速查
+- **配置**全部在 `config/`：`settings.yaml`（面板账号/端口/存储/LLM）、`cameras.yaml`
+  （监控与规则分配）、`rules.yaml`（规则）、`rule_templates.yaml`（内置判定模板，
+  一般不需要动）。所有面板改动自动备份（.bak 轮换 10 份）。
+- **首次登录后请修改默认密码**：「系统设置 → 面板」。
+- **存储**：告警入 `storage/alerts.db`（SQLite），快照入 `storage/snapshots/`（按日期分目录，
+  保留天数在系统设置里调，到期自动清理）；总览页有磁盘水位提示。
+- **没有摄像头也能试**：`python main.py --config config_test`（用本地测试视频跑通全流程）。
 
-| ID | 名称 | 模板 | 绑定模型 |
-|----|------|------|----------|
-| 1 | 未戴安全帽 | ppe_absence | ppe |
-| 13 | 禁火区吸烟 | presence_near_person | smoking |
-| 14 | 持烟 | presence_near_person | smoking |
+## 内置规则速查
 
-新规则在面板上创建即可（自动分配 ID），模板参数全部可调。
+| ID | 名称 | 判定逻辑 | 绑定模型 |
+|----|------|----------|----------|
+| 1 | 未戴安全帽 | 装备缺失检查 | ppe |
+| 13 | 禁火区吸烟 | 靠近人员才告警 | smoking |
+| 14 | 持烟 | 靠近人员才告警 | smoking |
+
+新规则在面板上创建即可（自动分配 ID）。
 
 ## 目录说明
 
 ```
-config/           正式配置（settings.yaml / cameras.yaml / rules.yaml 自动生成）
+config/           正式配置（settings.yaml / cameras.yaml / rules.yaml / rule_templates.yaml）
 config_test/      本地开发测试配置（真实监控停用）
 core/             取流 / 检测 / 分析 / 快照
-rules/            规则模板引擎（rules.yaml 驱动）
+rules/            规则引擎（判定逻辑 + 模板/规则存储）
 storage/          alerts.db / snapshots/ / test_results/
-webapp/           面板（FastAPI + 原生 JS，无前端构建）
+webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist，已入库）
 scripts/          测试视频生成 / 监控连通性测试 / 训练脚本
 ```
 
-## 设计与优化文档
+## 开发说明
 
-- [PANEL_DESIGN.md](PANEL_DESIGN.md) — 面板设计方案（v0.3）
-- [OPTIMIZATION.md](OPTIMIZATION.md) — 代码优化项清单（含完成状态）
+```bash
+# 前端（仅改界面时需要；日常运行不需要 Node）
+cd webapp/spa && npm install && npm run build
+```
+
+设计与优化文档：[PANEL_DESIGN.md](PANEL_DESIGN.md) / [OPTIMIZATION.md](OPTIMIZATION.md)

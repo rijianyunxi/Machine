@@ -43,10 +43,14 @@ export function BarChart({
   }, [height]);
 
   const { w, h } = size;
+  const fill = height === "fill";
   const anyValue = data.some((d) => d.value);
 
-  const wrapStyle: React.CSSProperties =
-    height === "fill" ? { height: "100%", width: "100%" } : { height };
+  /* fill 模式：容器 flex:1 由布局定高，SVG 绝对定位不参与高度计算——
+   * 否则「量容器→设 SVG 高→容器被撑高→再量」会形成无限增高回路。 */
+  const wrapStyle: React.CSSProperties = fill
+    ? { position: "relative", flex: 1, minHeight: 180, width: "100%" }
+    : { height };
 
   if (!w || !data.length || !anyValue) {
     return (
@@ -164,17 +168,34 @@ export function BarChart({
   });
 
   return (
-    <div ref={ref} style={{ ...wrapStyle, width: "100%" }}>
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#4d9fff" />
-          </linearGradient>
-        </defs>
-        {grid}
-        {bars}
-      </svg>
+    <div ref={ref} style={wrapStyle}>
+      {fill ? (
+        <svg
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+          viewBox={`0 0 ${w} ${h}`}
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#22d3ee" />
+              <stop offset="100%" stopColor="#4d9fff" />
+            </linearGradient>
+          </defs>
+          {grid}
+          {bars}
+        </svg>
+      ) : (
+        <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#22d3ee" />
+              <stop offset="100%" stopColor="#4d9fff" />
+            </linearGradient>
+          </defs>
+          {grid}
+          {bars}
+        </svg>
+      )}
     </div>
   );
 }

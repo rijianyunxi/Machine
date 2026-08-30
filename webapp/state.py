@@ -565,7 +565,6 @@ class RuntimeState:
                 "file_exists": exists is not None,
                 "config_enabled": bool(m.get("enabled", True)),
                 "confidence_override": m.get("confidence_override"),
-                "rules_hint": m.get("rules", []),
                 "load_status": self._load_jobs.get(name, {}).get("status"),
             }
             if detector is not None and detector.is_loaded(name):

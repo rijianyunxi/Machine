@@ -444,10 +444,8 @@ pre.log .INFO { color: #64748b; }
 /* row2 cards stretch; chart/feed fill the full card height */
 .row2 .card { display: flex; flex-direction: column; }
 .row2 .feed { flex: 1; max-height: none; }
-.card.chart #trend { position: relative; flex: 1; min-height: 180px; }
 /* keep the SVG out of the layout flow: an in-flow svg would feed its own
  * pixel height back into the grid row and grow the chart every redraw */
-.card.chart #trend > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .legend { display: inline-flex; gap: 12px; align-items: center; }
 .legend .li {
@@ -598,3 +596,88 @@ pre.log .INFO { color: #64748b; }
   padding:5px 8px;font-size:12px;font-weight:500;border-radius:7px}
 .anno-tabs .tab:hover{color:var(--text);filter:none}
 .anno-tabs .tab.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+.tpl-item {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px; background: var(--surface-2);
+}
+.tpl-item:last-child { margin-bottom: 0; }
+.tpl-item .head { display: flex; align-items: baseline; gap: 8px; }
+.tpl-item .head b { font-size: 13px; }
+.tpl-item .head .mono { color: var(--muted); font-size: 11.5px; }
+.tpl-item .head .ops { margin-left: auto; display: flex; gap: 6px; }
+.tpl-item .logic {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; font-size: 11.5px; color: var(--muted);
+}
+.tpl-item .meta {
+  margin-top: 6px; font-size: 11.5px; color: var(--muted);
+  display: flex; gap: 12px;
+}
+/* 规则编辑弹窗两栏 */
+.rule-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+@media (max-width: 860px) { .rule-form { grid-template-columns: 1fr; } }
+.rule-form .pane-min { min-width: 0; }
+/* 模板紧凑卡：操作按钮不被挤出 */
+.tpl-item .head .ops { margin-left: auto; flex-shrink: 0; }
+.tpl-item .logic span { min-width: 0; }
+/* 规则紧凑卡（左栏列表形态） */
+.rule-item {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px; background: var(--surface-2);
+}
+.rule-item:last-child { margin-bottom: 0; }
+.rule-item.off { opacity: 0.62; }
+.rule-item .row1 { display: flex; align-items: center; gap: 8px; }
+.rule-item .row1 .rid { font-family: var(--mono); color: var(--muted); font-size: 11.5px; }
+.rule-item .row1 b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-item .row1 .ops { margin-left: auto; flex-shrink: 0; display: flex; gap: 6px; }
+.rule-item .desc { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.rule-item .warn {
+  margin-top: 4px; font-size: 11.5px; color: var(--yellow);
+}
+.rule-item .meta {
+  margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px 12px; font-size: 11.5px; color: var(--muted);
+}
+.rule-item .meta .rate-bad { color: var(--red); font-weight: 600; }
+/* 模板卡原语说明：单行截断，避免与 chip 重叠换行错乱 */
+.tpl-item .logic { flex-wrap: nowrap; }
+.tpl-item .logic .chip { flex-shrink: 0; }
+.tpl-item .logic .txt {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+/* 规则页 tab 切换 */
+.page-tabs {
+  display: flex; gap: 4px; margin-bottom: 14px; background: var(--surface-2);
+  border-radius: 9px; padding: 3px; max-width: 320px;
+}
+.page-tabs .tab {
+  flex: 1; background: transparent; border: none; color: var(--text-2);
+  padding: 6px 10px; font-size: 12.5px; font-weight: 500; border-radius: 7px;
+}
+.page-tabs .tab:hover { color: var(--text); filter: none; }
+.page-tabs .tab.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.rules-pane { min-width: 0; }
+/* 类别 tag 输入 */
+.tag-input {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; background: var(--surface);
+}
+.tag-input .tag-rows { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-input .tag-rows .chip { display: inline-flex; align-items: center; }
+.tag-input .tag-x button {
+  background: none; border: none; color: inherit; cursor: pointer;
+  padding: 0 0 0 5px; font-size: 12px; font-weight: 700; line-height: 1;
+}
+.tag-input .tag-sugs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 8px;
+}
+.tag-input .tag-sugs .mini { padding: 2px 8px; font-size: 11px; }
+.tag-input > input {
+  border: 1px solid transparent; background: transparent;
+  box-shadow: none; margin-top: 8px; padding: 4px 2px;
+}
+.tag-input > input:focus { border-color: transparent; box-shadow: none; background: var(--surface-2); }

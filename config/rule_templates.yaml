@@ -12,6 +12,23 @@
 # 参数 type: classes(逗号分隔类别) / float / int；
 # from_model: true 表示该参数里的类别应存在于规则绑定的模型中（面板校验用）。
 templates:
+  # 通用检出：配合任意含目标类别的模型使用（如官方 yolov8n 检测猫/狗/车）
+  generic_presence:
+    label: 通用检出（出现即告警）
+    logic: presence
+    params:
+    - name: trigger_classes
+      type: classes
+      default: []
+      desc: 触发类别（检出即违规，从绑定模型的类目中选）
+      from_model: true
+    - name: min_confidence
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 1.0
+      desc: 最低置信度
+      from_model: false
   ppe_absence:
     label: 装备缺失检查（如未戴安全帽）
     logic: absence_required

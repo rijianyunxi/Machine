@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { ParamSpec, RuleEntry, TemplateSpec } from "../api/types";
+import type {
+  ModelsResponse,
+  ParamSpec,
+  RuleEntry,
+  TemplateSpec,
+} from "../api/types";
 import { Page } from "../layout/Page";
 import { usePolling } from "../hooks/usePolling";
 import { Modal } from "../ui/Modal";
@@ -10,61 +15,128 @@ import { Chip, Empty, useBusy } from "../ui/badges";
 
 type ParamValues = Record<string, unknown>;
 
-interface ParamRow {
-  name: string;
-  type: string;
-  default: string; // 输入框中的字符串形态
-  min: string;
-  max: string;
-  desc: string;
-  from_model: boolean;
-}
+/* 判定逻辑 -> 规则落盘时使用的内部模板名（模板已从界面隐藏，仅作存储机制） */
+const LOGIC_CANONICAL: Record<string, string> = {
+  presence: "generic_presence",
+  presence_near: "presence_near_person",
+  absence_required: "ppe_absence",
+};
 
 interface RuleForm {
   id: string;
   name: string;
   description: string;
-  template: string;
+  logic: string;
   models: string[];
   params: ParamValues;
   severity: string;
   enabled: boolean;
 }
 
-interface TplForm {
-  name: string;
-  label: string;
-  logic: string;
-  params: ParamRow[];
-}
-
-function rowToParam(p: ParamRow): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    name: p.name.trim(),
-    type: p.type,
-    desc: p.desc.trim(),
-    from_model: p.from_model,
+/* 类别 tag 输入：已选为可删除的 chip；下方是模型类别建议（点选即加，
+ * 且自动绑定来源模型）；也支持手输任意类别（回车添加）。 */
+function ClassTagsInput({
+  value,
+  suggestions,
+  placeholder,
+  onChange,
+  onPickSource,
+}: {
+  value: string[];
+  suggestions: { cls: string; models: string[] }[];
+  placeholder?: string;
+  onChange: (v: string[]) => void;
+  onPickSource?: (cls: string, models: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return;
+    if (!value.some((x) => x.toLowerCase() === v.toLowerCase()))
+      onChange([...value, v]);
   };
-  if (p.type === "classes") {
-    out.default = p.default.trim()
-      ? p.default.split(",").map((x) => x.trim()).filter(Boolean)
-      : [];
-  } else {
-    out.default = p.default.trim() === "" ? 0 : +p.default;
-    if (p.min !== "") out.min = +p.min;
-    if (p.max !== "") out.max = +p.max;
-  }
-  return out;
+  const remove = (c: string) => onChange(value.filter((x) => x !== c));
+  const fresh = suggestions.filter(
+    (s) => !value.some((v) => v.toLowerCase() === s.cls.toLowerCase()),
+  );
+  const commitDraft = () => {
+    draft
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .forEach(add);
+    setDraft("");
+  };
+  return (
+    <div className="tag-input">
+      {value.length ? (
+        <div className="tag-rows">
+          {value.map((v) => (
+            <span key={v} className="chip blue tag-x">
+              {v}
+              <button type="button" title="移除" onClick={() => remove(v)}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {fresh.length ? (
+        <div className="tag-sugs">
+          {fresh.slice(0, 10).map((s) => (
+            <button
+              key={s.cls}
+              type="button"
+              className="mini ghost"
+              title={
+                s.models.length
+                  ? `来自模型：${s.models.join("、")}，点击自动绑定`
+                  : undefined
+              }
+              onClick={() => {
+                add(s.cls);
+                onPickSource?.(s.cls, s.models);
+              }}
+            >
+              + {s.cls}
+            </button>
+          ))}
+          {fresh.length > 10 ? (
+            <span className="muted" style={{ fontSize: 11 }}>
+              还有 {fresh.length - 10} 个…
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <input
+        style={{ width: "100%" }}
+        value={draft}
+        placeholder="输入类别后回车添加（可逗号分隔多个）"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitDraft();
+          }
+        }}
+        onBlur={() => setDraft("")}
+      />
+    </div>
+  );
 }
 
-/* 规则弹窗的参数区：按模板 spec 渲染（classes=逗号文本，float/int=数字） */
+/* 参数区：按判定逻辑的参数定义渲染（classes=类别点选，float/int=数字） */
 function ParamFields({
   spec,
   values,
+  classSources,
+  onPickSource,
   onChange,
 }: {
   spec: TemplateSpec | undefined;
   values: ParamValues;
+  classSources: { cls: string; models: string[] }[];
+  onPickSource: (cls: string, models: string[]) => void;
   onChange: (v: ParamValues) => void;
 }) {
   if (!spec) return null;
@@ -72,25 +144,24 @@ function ParamFields({
     <>
       {spec.params.map((p: ParamSpec) => {
         const val = values[p.name] !== undefined ? values[p.name] : p.default;
-        if (p.type === "classes" || p.type === "list") {
-          const s = Array.isArray(val) ? val.join(", ") : String(val ?? "");
+        if (p.type === "classes") {
+          const arr: string[] = Array.isArray(val) ? val : [];
           return (
             <div key={p.name}>
-              <label>{p.desc || p.name}</label>
-              <input
-                style={{ width: "100%" }}
-                data-param={p.name}
-                value={s}
-                placeholder="类别名用英文逗号分隔"
-                onChange={(e) =>
-                  onChange({
-                    ...values,
-                    [p.name]: e.target.value
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean),
-                  })
-                }
+              <label>
+                {p.desc || p.name}
+                {!p.from_model ? (
+                  <span className="muted" style={{ fontSize: 10.5 }}>
+                    {" "}
+                    · 类别可来自其他模型
+                  </span>
+                ) : null}
+              </label>
+              <ClassTagsInput
+                value={arr}
+                suggestions={classSources}
+                onPickSource={onPickSource}
+                onChange={(v) => onChange({ ...values, [p.name]: v })}
               />
             </div>
           );
@@ -115,19 +186,40 @@ function ParamFields({
 
 export default function RulesPage() {
   const [rules, setRules] = useState<RuleEntry[] | null>(null);
+  // 内部模板注册表：用于把规则的 template 字段解析成判定逻辑 + 参数定义
   const [templates, setTemplates] = useState<Record<string, TemplateSpec>>({});
-  const [logics, setLogics] = useState<Record<string, string>>({});
+  const [logics, setLogics] = useState<
+    Record<string, { label: string; desc: string }>
+  >({});
   const [models, setModels] = useState<string[]>([]);
-  const [summary, setSummary] = useState<Record<string, { false_positive_rate: number | null }> | null>(null);
+  const [modelClasses, setModelClasses] = useState<Record<string, string[]>>({});
+  const classSources = (() => {
+    const m = new Map<string, string[]>();
+    for (const [name, classes] of Object.entries(modelClasses))
+      for (const c of classes) m.set(c, [...(m.get(c) || []), name]);
+    return [...m.entries()].map(([cls, ms]) => ({ cls, models: ms }));
+  })();
+  const [summary, setSummary] = useState<
+    Record<string, { false_positive_rate: number | null }> | null
+  >(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   const [form, setForm] = useState<RuleForm | null>(null);
-  const [tplEditing, setTplEditing] = useState<string | null>(null);
-  const [tplOpen, setTplOpen] = useState(false);
-  const [tpl, setTpl] = useState<TplForm | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
   const { busy, wrap } = useBusy();
+
+  const logicOf = useCallback(
+    (template: string) => templates[template]?.logic || template,
+    [templates],
+  );
+  const logicLabel = useCallback(
+    (template: string) => {
+      const logic = logicOf(template);
+      return logics[logic]?.label || logic;
+    },
+    [templates, logics, logicOf],
+  );
 
   const refresh = useCallback(async () => {
     const [r, s, t] = await Promise.all([
@@ -143,13 +235,17 @@ export default function RulesPage() {
   }, []);
 
   useEffect(() => {
-    api<{ templates: Record<string, TemplateSpec> }>("/api/rules/templates");
-    api<{ logics: Record<string, string> }>("/api/rules/template-logics").then((r) =>
-      setLogics(r.logics),
-    );
-    api<{ models: Array<{ name: string }> }>("/api/models").then((r) =>
-      setModels(r.models.map((m) => m.name)),
-    );
+    api<{ logics: Record<string, { label: string; desc: string }> }>(
+      "/api/rules/template-logics",
+    ).then((r) => setLogics(r.logics));
+    api<ModelsResponse>("/api/models").then((r) => {
+      setModels(r.models.map((m) => m.name));
+      setModelClasses(
+        Object.fromEntries(
+          r.models.map((m) => [m.name, Object.values(m.classes || {})]),
+        ),
+      );
+    });
   }, []);
   usePolling(refresh, 60000);
 
@@ -157,18 +253,16 @@ export default function RulesPage() {
 
   const openRuleEdit = async (id: number | null) => {
     setEditing(id);
-    if (!rules?.length) await refresh();
+    if (!rules?.length || !Object.keys(templates).length) await refresh();
     const r = rules?.find((x) => x.id === id);
-    const tplKeys = Object.keys(templates);
-    const tplName = r?.template || tplKeys[0] || "";
     setForm({
       id: r ? String(r.id) : "",
       name: r?.name || "",
       description: r?.description || "",
-      template: tplName,
+      logic: r ? logicOf(r.template) || "presence" : "presence",
       models: r?.models || [],
       params: r?.params || {},
-      severity: String(r?.severity ?? 3),
+      severity: String(Math.min(4, Math.max(1, r?.severity ?? 3))),
       enabled: r ? r.enabled : true,
     });
     setRuleOpen(true);
@@ -177,21 +271,29 @@ export default function RulesPage() {
   const setFormPatch = (patch: Partial<RuleForm>) =>
     setForm((f) => (f ? { ...f, ...patch } : f));
 
+  const switchLogic = (logic: string) =>
+    setForm((f) => (f ? { ...f, logic, params: {} } : f)); // 换逻辑则参数回默认
+
   const saveRule = wrap("rule", async () => {
     if (!form) return;
+    // 编辑且原模板就是同一判定逻辑 → 保留原模板（尊重自定义参数定义）
+    const cur = editing ? rules?.find((x) => x.id === editing) : null;
+    const template =
+      cur && logicOf(cur.template) === form.logic
+        ? cur.template
+        : LOGIC_CANONICAL[form.logic] || "generic_presence";
     const body = {
       id: +form.id || null,
       name: form.name.trim(),
       description: form.description.trim(),
-      template: form.template,
+      template,
       models: form.models,
       params: form.params,
       severity: +form.severity,
       enabled: form.enabled,
     };
     try {
-      if (editing)
-        await api(`/api/rules/${editing}`, { method: "PUT", body });
+      if (editing) await api(`/api/rules/${editing}`, { method: "PUT", body });
       else await api("/api/rules", { method: "POST", body });
       toast("已保存，下一帧生效");
       setRuleOpen(false);
@@ -222,65 +324,6 @@ export default function RulesPage() {
     }
   };
 
-  /* ---------------- 模板弹窗 ---------------- */
-
-  const openTplEdit = (name: string | null) => {
-    setTplEditing(name);
-    const t = name ? templates[name] : null;
-    setTpl({
-      name: name || "",
-      label: t?.label || "",
-      logic: t?.logic || Object.keys(logics)[0] || "",
-      params: (t?.params || []).map((p) => ({
-        name: p.name,
-        type: p.type,
-        default: Array.isArray(p.default) ? p.default.join(", ") : String(p.default ?? ""),
-        min: p.min !== undefined ? String(p.min) : "",
-        max: p.max !== undefined ? String(p.max) : "",
-        desc: p.desc || "",
-        from_model: !!p.from_model,
-      })),
-    });
-    setTplOpen(true);
-  };
-
-  const setTplPatch = (patch: Partial<TplForm>) => setTpl((t) => (t ? { ...t, ...patch } : t));
-  const setRow = (i: number, patch: Partial<ParamRow>) =>
-    setTpl((t) =>
-      t ? { ...t, params: t.params.map((r, ri) => (ri === i ? { ...r, ...patch } : r)) } : t,
-    );
-
-  const saveTemplate = wrap("tpl", async () => {
-    if (!tpl) return;
-    const body = {
-      name: tpl.name.trim(),
-      label: tpl.label.trim(),
-      logic: tpl.logic,
-      params: tpl.params.map(rowToParam),
-    };
-    try {
-      if (tplEditing)
-        await api(`/api/rules/templates/${encodeURIComponent(tplEditing)}`, { method: "PUT", body });
-      else await api("/api/rules/templates", { method: "POST", body });
-      toast("模板已保存");
-      setTplOpen(false);
-      refresh();
-    } catch (e) {
-      toast((e as Error).message, false);
-    }
-  });
-
-  const delTpl = async (name: string) => {
-    if (!(await confirm(`删除模板 ${name}？`))) return;
-    try {
-      await api(`/api/rules/templates/${encodeURIComponent(name)}`, { method: "DELETE" });
-      toast("已删除");
-      refresh();
-    } catch (e) {
-      toast((e as Error).message, false);
-    }
-  };
-
   /* ---------------- 渲染 ---------------- */
 
   const rate = (id: number) => {
@@ -295,164 +338,79 @@ export default function RulesPage() {
     );
   };
 
+  const specForLogic = (logic: string) => {
+    if (!form) return undefined;
+    const cur = editing ? rules?.find((x) => x.id === editing) : null;
+    if (cur && logicOf(cur.template) === logic)
+      return templates[cur.template]; // 保留自定义参数定义
+    return templates[LOGIC_CANONICAL[logic]];
+  };
+
   return (
     <Page
       title="规则配置"
-      subtitle="规则与模板都是配置：参数 / 绑定模型 / 分配监控 / 模板类型在线可调，下一帧生效"
-      actions={
-        <>
-          <button className="ghost" onClick={() => openTplEdit(null)}>
-            ＋ 新建模板
-          </button>
-          <button onClick={() => openRuleEdit(null)}>＋ 新建规则</button>
-        </>
-      }
+      subtitle="三步完成一个检测：模型里来类别，规则定何时告警，监控里选哪路画面"
+      actions={<button onClick={() => openRuleEdit(null)}>＋ 新建规则</button>}
     >
       <div className="card">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>名称</th>
-                <th>模板</th>
-                <th>绑定模型</th>
-                <th>使用监控</th>
-                <th>7 天误报率</th>
-                <th>状态</th>
-                <th style={{ textAlign: "right" }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules === null ? (
-                <tr>
-                  <td colSpan={8}>
-                    <Empty>加载中…</Empty>
-                  </td>
-                </tr>
-              ) : rules.length ? (
-                rules.map((r) => (
-                  <tr key={r.id}>
-                    <td className="mono">R{String(r.id).padStart(2, "0")}</td>
-                    <td>
-                      <b>{r.name}</b>
-                      {r.warnings?.length ? (
-                        <div className="muted" style={{ color: "var(--yellow)", fontSize: 11.5 }}>
-                          ⚠ {r.warnings.join("；")}
-                        </div>
-                      ) : null}
-                      <div className="muted" style={{ fontSize: 11.5 }}>
-                        {r.description}
-                      </div>
-                    </td>
-                    <td className="muted">{templates[r.template]?.label || r.template}</td>
-                    <td>
-                      {r.models.length
-                        ? r.models.map((m) => <Chip key={m} text={m} color="blue" />)
-                        : <Chip text="全部模型" />}
-                    </td>
-                    <td>
-                      {r.cameras.length ? (
-                        <span className="muted">{r.cameras.length} 路</span>
-                      ) : (
-                        <span className="muted">未分配</span>
-                      )}
-                    </td>
-                    <td>{rate(r.id)}</td>
-                    <td>{r.enabled ? <Chip text="启用" color="green" /> : <Chip text="停用" />}</td>
-                    <td className="actions" style={{ textAlign: "right" }}>
-                      <button className="mini ghost" onClick={() => openRuleEdit(r.id)}>
-                        编辑
-                      </button>
-                      <button className="mini ghost" onClick={() => toggleRule(r.id, !r.enabled)}>
-                        {r.enabled ? "停用" : "启用"}
-                      </button>
-                      <button className="mini danger" onClick={() => delRule(r.id)}>
-                        删除
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8}>
-                    <Empty>暂无规则</Empty>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="tpl-head">
-          <h3>模板管理</h3>
-          <span className="muted" style={{ fontSize: 12 }}>
-            模板 = 检测原语 + 参数定义；新增模板类型无需改代码
-          </span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>模板名</th>
-                <th>显示名称</th>
-                <th>检测原语</th>
-                <th>参数</th>
-                <th>被规则引用</th>
-                <th style={{ textAlign: "right" }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(templates).length ? (
-                Object.entries(templates).map(([k, v]) => {
-                  const usage = rules?.filter((r) => r.template === k).length ?? 0;
-                  return (
-                    <tr key={k}>
-                      <td className="mono">{k}</td>
-                      <td>
-                        <b>{v.label}</b>
-                      </td>
-                      <td className="muted" style={{ maxWidth: 360, fontSize: 11.5 }}>
-                        <Chip text={v.logic || "?"} color="blue" /> {logics[v.logic] || ""}
-                      </td>
-                      <td className="muted">{(v.params || []).length} 项</td>
-                      <td>
-                        {usage ? (
-                          <span className="muted">{usage} 条</span>
-                        ) : (
-                          <span className="muted">未引用</span>
-                        )}
-                      </td>
-                      <td className="actions" style={{ textAlign: "right" }}>
-                        <button className="mini ghost" onClick={() => openTplEdit(k)}>
-                          编辑
-                        </button>
-                        <button className="mini danger" onClick={() => delTpl(k)}>
-                          删除
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={6}>
-                    <Empty>暂无模板</Empty>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {rules === null ? (
+          <Empty>加载中…</Empty>
+        ) : rules.length ? (
+          rules.map((r) => (
+            <div className={"rule-item" + (r.enabled ? "" : " off")} key={r.id}>
+              <div className="row1">
+                <span className="rid">R{String(r.id).padStart(2, "0")}</span>
+                <b title={r.name}>{r.name}</b>
+                {r.enabled ? <Chip text="启用" color="green" /> : <Chip text="停用" />}
+                <span className="ops">
+                  <button className="mini ghost" onClick={() => openRuleEdit(r.id)}>
+                    编辑
+                  </button>
+                  <button className="mini ghost" onClick={() => toggleRule(r.id, !r.enabled)}>
+                    {r.enabled ? "停用" : "启用"}
+                  </button>
+                  <button className="mini danger" onClick={() => delRule(r.id)}>
+                    删除
+                  </button>
+                </span>
+              </div>
+              {r.description ? <div className="desc">{r.description}</div> : null}
+              {r.warnings?.length ? (
+                <div className="warn">⚠ {r.warnings.join("；")}</div>
+              ) : null}
+              <div className="meta">
+                <span>{logicLabel(r.template)}</span>
+                <span>
+                  类别{" "}
+                  {(() => {
+                    const clsParams = Object.entries(r.params).filter(
+                      ([, v]) => Array.isArray(v),
+                    );
+                    const all = [
+                      ...new Set(
+                        clsParams.flatMap(([, v]) => v as string[]),
+                      ),
+                    ];
+                    return all.length
+                      ? all.map((c) => <Chip key={c} text={c} />)
+                      : "—";
+                  })()}
+                </span>
+                <span>{r.cameras.length ? `${r.cameras.length} 路监控` : "未分配监控"}</span>
+                <span>误报率 {rate(r.id)}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <Empty>暂无规则，点右上角「新建规则」</Empty>
+        )}
       </div>
 
       {/* 规则弹窗 */}
       {ruleOpen && form && (
         <Modal
           title={editing ? `编辑规则 · R${editing}` : "新建规则"}
-          width={640}
+          width={860}
           onClose={() => setRuleOpen(false)}
           footer={
             <>
@@ -465,252 +423,110 @@ export default function RulesPage() {
             </>
           }
         >
-          <div className="form-grid">
-            <div>
-              <label>规则 ID（留空自动分配）</label>
+          <div className="rule-form">
+            <div className="pane-min">
+              <div className="form-grid">
+                <div>
+                  <label>规则 ID（留空自动分配）</label>
+                  <input
+                    style={{ width: "100%" }}
+                    type="number"
+                    disabled={!!editing}
+                    value={form.id}
+                    onChange={(e) => setFormPatch({ id: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label>严重度</label>
+                  <select
+                    style={{ width: "100%" }}
+                    value={form.severity}
+                    onChange={(e) => setFormPatch({ severity: e.target.value })}
+                  >
+                    <option value="1">1 · 低</option>
+                    <option value="2">2 · 中</option>
+                    <option value="3">3 · 高</option>
+                    <option value="4">4 · 严重</option>
+                  </select>
+                </div>
+              </div>
+              <label>规则名称（英文标识）</label>
               <input
-                className="w240"
-                type="number"
-                disabled={!!editing}
-                value={form.id}
-                onChange={(e) => setFormPatch({ id: e.target.value })}
+                className="w320"
+                placeholder="no_safety_vest"
+                value={form.name}
+                onChange={(e) => setFormPatch({ name: e.target.value })}
               />
-            </div>
-            <div>
-              <label>严重度（1 低 ~ 4 严重）</label>
+              <label>描述</label>
               <input
-                className="w240"
-                type="number"
-                min={1}
-                max={4}
-                value={form.severity}
-                onChange={(e) => setFormPatch({ severity: e.target.value })}
+                style={{ width: "100%" }}
+                value={form.description}
+                onChange={(e) => setFormPatch({ description: e.target.value })}
               />
-            </div>
-          </div>
-          <label>规则名称（英文标识）</label>
-          <input
-            className="w320"
-            placeholder="no_safety_vest"
-            value={form.name}
-            onChange={(e) => setFormPatch({ name: e.target.value })}
-          />
-          <label>描述</label>
-          <input
-            style={{ width: "100%" }}
-            value={form.description}
-            onChange={(e) => setFormPatch({ description: e.target.value })}
-          />
-          <label>模板类型</label>
-          <select
-            style={{ width: "100%" }}
-            value={form.template}
-            onChange={(e) => setFormPatch({ template: e.target.value })}
-          >
-            {Object.entries(templates).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-          <label>绑定模型（该规则只消费所选模型的检测结果）</label>
-          <div className="inline-checks">
-            {models.map((m) => (
-              <label key={m}>
-                <input
-                  type="checkbox"
-                  checked={form.models.includes(m)}
-                  onChange={() =>
-                    setFormPatch({
-                      models: form.models.includes(m)
-                        ? form.models.filter((x) => x !== m)
-                        : [...form.models, m],
-                    })
-                  }
-                />{" "}
-                {m}
-              </label>
-            ))}
-          </div>
-          <ParamFields
-            spec={templates[form.template]}
-            values={form.params}
-            onChange={(params) => setFormPatch({ params })}
-          />
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              color: "var(--text)",
-              marginTop: 14,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={form.enabled}
-              onChange={(e) => setFormPatch({ enabled: e.target.checked })}
-            />{" "}
-            启用
-          </label>
-        </Modal>
-      )}
-
-      {/* 模板弹窗 */}
-      {tplOpen && tpl && (
-        <Modal
-          title={tplEditing ? `编辑模板 · ${tplEditing}` : "新建模板"}
-          width={820}
-          onClose={() => setTplOpen(false)}
-          footer={
-            <>
-              <button className="ghost" onClick={() => setTplOpen(false)}>
-                取消
-              </button>
-              <button disabled={busy.tpl} onClick={saveTemplate}>
-                保存
-              </button>
-            </>
-          }
-        >
-          <div className="form-grid">
-            <div>
-              <label>模板名（英文标识，保存后不可改）</label>
-              <input
-                className="w240"
-                placeholder="open_flame"
-                disabled={!!tplEditing}
-                value={tpl.name}
-                onChange={(e) => setTplPatch({ name: e.target.value })}
-              />
-            </div>
-            <div>
-              <label>显示名称</label>
-              <input
-                className="w240"
-                placeholder="明火检出"
-                value={tpl.label}
-                onChange={(e) => setTplPatch({ label: e.target.value })}
-              />
-            </div>
-          </div>
-          <label>检测原语（决定判定逻辑，参数只负责配置）</label>
-          <select
-            style={{ width: "100%" }}
-            value={tpl.logic}
-            onChange={(e) => setTplPatch({ logic: e.target.value })}
-          >
-            {Object.entries(logics).map(([k, d]) => (
-              <option key={k} value={k}>
-                {k} — {d}
-              </option>
-            ))}
-          </select>
-          <label style={{ marginTop: 16 }}>
-            参数定义（规则实例的编辑表单按此渲染）
-          </label>
-          <div className="tpl-param-grid header">
-            <span>参数名</span>
-            <span>类型</span>
-            <span>默认值</span>
-            <span>min</span>
-            <span>max</span>
-            <span>说明</span>
-            <span>模型校验</span>
-            <span />
-          </div>
-          {tpl.params.map((row, i) => (
-            <div className="tpl-param-grid" key={i}>
-              <input
-                placeholder="参数名"
-                value={row.name}
-                onChange={(e) => setRow(i, { name: e.target.value })}
-              />
+              <label>何时告警（判定逻辑）</label>
               <select
-                value={row.type}
-                onChange={(e) => setRow(i, { type: e.target.value })}
+                style={{ width: "100%" }}
+                value={form.logic}
+                onChange={(e) => switchLogic(e.target.value)}
               >
-                <option value="classes">classes</option>
-                <option value="float">float</option>
-                <option value="int">int</option>
+                {Object.entries(logics).map(([k, d]) => (
+                  <option key={k} value={k}>
+                    {d.label} — {d.desc}
+                  </option>
+                ))}
               </select>
-              <input
-                type={row.type === "classes" ? "text" : "number"}
-                step={row.type === "classes" ? undefined : "any"}
-                placeholder={row.type === "classes" ? "类别名用英文逗号分隔" : "默认数值"}
-                value={row.default}
-                onChange={(e) => setRow(i, { default: e.target.value })}
-              />
-              <input
-                type="number"
-                placeholder="min"
-                value={row.min}
-                onChange={(e) => setRow(i, { min: e.target.value })}
-              />
-              <input
-                type="number"
-                placeholder="max"
-                value={row.max}
-                onChange={(e) => setRow(i, { max: e.target.value })}
-              />
-              <input
-                placeholder="表单里显示的说明"
-                value={row.desc}
-                onChange={(e) => setRow(i, { desc: e.target.value })}
-              />
-              <label className="fm">
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "var(--text)",
+                  marginTop: 14,
+                  cursor: "pointer",
+                }}
+              >
                 <input
                   type="checkbox"
-                  checked={row.from_model}
-                  onChange={(e) => setRow(i, { from_model: e.target.checked })}
+                  checked={form.enabled}
+                  onChange={(e) => setFormPatch({ enabled: e.target.checked })}
                 />{" "}
-                校验
+                启用
               </label>
-              <button
-                className="mini danger"
-                title="移除参数"
-                onClick={() =>
-                  setTpl((t) =>
-                    t ? { ...t, params: t.params.filter((_, ri) => ri !== i) } : t,
-                  )
-                }
-              >
-                ✕
-              </button>
             </div>
-          ))}
-          <button
-            className="mini ghost"
-            style={{ marginTop: 6 }}
-            onClick={() =>
-              setTpl((t) =>
-                t
-                  ? {
-                      ...t,
-                      params: [
-                        ...t.params,
-                        {
-                          name: "",
-                          type: "classes",
-                          default: "",
-                          min: "",
-                          max: "",
-                          desc: "",
-                          from_model: false,
-                        },
-                      ],
-                    }
-                  : t,
-              )
-            }
-          >
-            ＋ 添加参数
-          </button>
-          <p className="muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-            「模型校验」勾选后，规则绑定模型的类别列表会校验该参数（如 hardhat
-            必须在绑定模型里）。被规则引用的模板不能删除；改参数定义不影响已保存规则的参数值。
-          </p>
+            <div className="pane-min">
+              <label>绑定模型（点选类别时自动勾选来源模型；也可手动调整）</label>
+              <div className="inline-checks">
+                {models.map((m) => (
+                  <label key={m}>
+                    <input
+                      type="checkbox"
+                      checked={form.models.includes(m)}
+                      onChange={() =>
+                        setFormPatch({
+                          models: form.models.includes(m)
+                            ? form.models.filter((x) => x !== m)
+                            : [...form.models, m],
+                        })
+                      }
+                    />{" "}
+                    {m}
+                  </label>
+                ))}
+              </div>
+              <ParamFields
+                spec={specForLogic(form.logic)}
+                values={form.params}
+                classSources={classSources}
+                onPickSource={(cls, srcModels) => {
+                  if (!srcModels.length) return;
+                  setFormPatch({
+                    models: [...new Set([...form.models, ...srcModels])],
+                  });
+                }}
+                onChange={(params) => setFormPatch({ params })}
+              />
+            </div>
+          </div>
         </Modal>
       )}
     </Page>

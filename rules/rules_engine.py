@@ -35,10 +35,17 @@ LOGIC_PRESENCE = "presence"
 LOGIC_PRESENCE_NEAR = "presence_near"
 LOGIC_ABSENCE_REQUIRED = "absence_required"
 
+# 判定逻辑的中文显示名（面板下拉/徽章用），key 是内部标识。
+LOGIC_LABELS = {
+    LOGIC_PRESENCE: "出现即告警",
+    LOGIC_PRESENCE_NEAR: "靠近人员才告警",
+    LOGIC_ABSENCE_REQUIRED: "装备缺失检查",
+}
+
 CHECK_LOGICS = {
-    LOGIC_PRESENCE: "检出即违规：画面出现触发类别就告警（如明火、打电话）",
-    LOGIC_PRESENCE_NEAR: "靠近人员才违规：触发类检出且与人员框重叠才告警（如吸烟）",
-    LOGIC_ABSENCE_REQUIRED: "装备缺失即违规：人员未被必需装备框覆盖，或检出违规类（如未戴安全帽）",
+    LOGIC_PRESENCE: "画面中出现所选类别就告警（如明火、猫、打电话）",
+    LOGIC_PRESENCE_NEAR: "所选类别检出且贴着人员才告警（如烟头在人手上）",
+    LOGIC_ABSENCE_REQUIRED: "人员没戴该戴的装备、或直接检出违规类就告警（如未戴安全帽）",
 }
 
 # Seed templates migrated to rule_templates.yaml on first run.
@@ -180,7 +187,7 @@ class TemplateStore:
         logic = str(spec.get("logic") or "").strip()
         if logic not in CHECK_LOGICS:
             raise ValueError(
-                f"未知检测原语: {logic}，可选: {', '.join(CHECK_LOGICS)}")
+                f"未知判定逻辑: {logic}，可选: {', '.join(CHECK_LOGICS)}")
         raw_params = spec.get("params")
         if raw_params is None:
             raw_params = []
@@ -499,5 +506,8 @@ def get_template_specs(config_dir="config") -> dict:
 
 
 def get_template_logics() -> dict:
-    """Check logic primitives a new template can bind to (name -> description)."""
-    return dict(CHECK_LOGICS)
+    """判定逻辑清单：key -> {label, desc}，供面板新建模板时选择。"""
+    return {
+        key: {"label": LOGIC_LABELS[key], "desc": desc}
+        for key, desc in CHECK_LOGICS.items()
+    }

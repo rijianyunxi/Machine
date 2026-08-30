@@ -17,19 +17,12 @@ model:
   - name: "ppe"
     path: "models/yolov8-ppe.pt"
     enabled: true
-    rules: [1]
 
     # Smoking detection (cigarette, smoke)
   - name: "smoking"
     path: "models/yolov8-smoking.pt"
     enabled: true
     confidence_override: 0.6
-    rules: [13]
-
-  # Legacy single-model path (used if models list is empty)
-  # path: "models/yolov8-ppe.pt"
-
-# Video capture configuration
 capture:
   target_fps: 2
   reconnect_delay: 5
