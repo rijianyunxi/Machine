@@ -14,4 +14,9 @@ build/
 *.swo
 .DS_Store
 Thumbs.db
+.zcode/
 storage/snapshots/
+
+# 前端 SPA：依赖不入库；构建产物 dist 入库（运行时无 Node 也能直接服务）
+webapp/spa/node_modules/
+!webapp/spa/dist/

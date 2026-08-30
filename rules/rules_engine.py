@@ -181,8 +181,15 @@ class TemplateStore:
         if logic not in CHECK_LOGICS:
             raise ValueError(
                 f"未知检测原语: {logic}，可选: {', '.join(CHECK_LOGICS)}")
+        raw_params = spec.get("params")
+        if raw_params is None:
+            raw_params = []
+        if not isinstance(raw_params, (list, tuple)):
+            raise ValueError("params 必须是参数定义列表")
         params, seen = [], set()
-        for p in spec.get("params") or []:
+        for p in raw_params:
+            if not isinstance(p, dict):
+                raise ValueError(f"参数定义必须是对象: {p!r}")
             pname = str(p.get("name") or "").strip()
             if not _NAME_RE.match(pname):
                 raise ValueError(f"参数名不合法: {pname!r}")
@@ -201,10 +208,12 @@ class TemplateStore:
                         else int(float(default))
                 except (TypeError, ValueError):
                     raise ValueError(f"参数 {pname} 默认值必须是数字")
-                if p.get("min") is not None:
-                    clean["min"] = float(p["min"])
-                if p.get("max") is not None:
-                    clean["max"] = float(p["max"])
+                for bound in ("min", "max"):
+                    if p.get(bound) is not None:
+                        try:
+                            clean[bound] = float(p[bound])
+                        except (TypeError, ValueError):
+                            raise ValueError(f"参数 {pname} {bound} 必须是数字")
             else:
                 if isinstance(default, str):
                     default = [x.strip() for x in default.split(",") if x.strip()]

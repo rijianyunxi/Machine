@@ -483,23 +483,6 @@ pre.log .INFO { color: #64748b; }
 .sub .bad, .cam-head .bad { color: var(--red); font-weight: 600; }
 .sub .warn, .cam-head .warn { color: var(--yellow); font-weight: 600; }
 
-/* compact camera wall: many small cards, status chip overlaid */
-.snap-grid.cams { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
-.cam { margin: 0; cursor: pointer; }
-.cam-media { position: relative; }
-.cam-media .chip {
-  position: absolute; top: 7px; left: 7px; z-index: 2;
-  box-shadow: 0 2px 8px rgba(2, 6, 16, 0.5);
-}
-.cam-media .thumb:hover { transform: none; }
-.cam figcaption {
-  display: flex; align-items: baseline; gap: 6px;
-  margin-top: 6px; font-size: 12.5px; font-family: var(--font);
-  overflow: hidden; white-space: nowrap;
-}
-.cam figcaption b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.cam .cid { color: var(--muted); font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
-
 /* pending-alert value turns red while there is something to review */
 .stat .v.alerting { color: var(--red); }
 
@@ -564,3 +547,54 @@ pre.log .INFO { color: #64748b; }
   font-size: 11.5px; color: var(--muted); white-space: nowrap; margin: 0;
 }
 .tpl-param-grid input, .tpl-param-grid select { width: 100%; min-width: 0; }
+
+/* ============ 在线标注页（annotate） ============ */
+@media (max-width:1100px){ .anno-layout{grid-template-columns:1fr !important} }
+.anno-box{position:absolute;border:2px solid var(--accent);cursor:pointer;box-sizing:border-box}
+.anno-box.sel{border-color:var(--yellow);box-shadow:0 0 0 1px var(--yellow)}
+.anno-box .tag{position:absolute;top:-19px;left:-2px;background:var(--accent);color:#04121f;
+  font-size:10px;font-weight:600;padding:1.5px 6px;border-radius:4px;white-space:nowrap;line-height:1.4}
+.anno-box.sel .tag{background:var(--yellow)}
+.anno-box .rz{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;
+  background:var(--yellow);border-radius:2px;cursor:nwse-resize}
+.anno-ghost{position:absolute;border:2px dashed var(--yellow);pointer-events:none}
+.anno-layer{position:absolute;inset:0;pointer-events:none}
+.anno-layer .anno-box{pointer-events:auto}
+#stage-wrap{margin:0 auto;width:fit-content}
+.anno-box.llm{border-style:dashed;border-color:var(--green)}
+.anno-box.llm .tag{background:var(--green);color:#04121f}
+.stage-loading{position:absolute;inset:0;z-index:20;display:grid;place-items:center;
+  background:rgba(4,8,16,.55);backdrop-filter:blur(2px);border-radius:10px}
+.spinner{width:26px;height:26px;margin:0 auto 8px;border:3px solid var(--border-strong);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.cls-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;
+  cursor:pointer;border:1px solid transparent}
+.cls-row:hover{background:var(--surface-2)}
+.cls-row.active{background:var(--accent-soft);border-color:rgba(77,159,255,.35)}
+.cls-dot{width:13px;height:13px;border-radius:4px;flex-shrink:0;
+  border:1px solid rgba(255,255,255,.25)}
+.llm-pv{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;
+  border:1px solid var(--border);margin-bottom:5px;font-size:12px;cursor:pointer}
+.llm-pv:hover{background:var(--surface-3)}
+.llm-pv.dimmed{opacity:.45}
+.llm-pv.sel{border-color:var(--yellow);box-shadow:0 0 0 1px var(--yellow)}
+.llm-pv input{width:13px;height:13px;flex-shrink:0}
+.llm-pv .sw{width:11px;height:11px;border-radius:3px;flex-shrink:0;
+  border:1px dashed var(--green);background:rgba(52,211,153,.15)}
+.anno-prompt{width:100%;font-family:var(--mono);font-size:11.5px;line-height:1.55;
+  min-height:64px;resize:vertical;overflow:hidden;margin-top:8px}
+.box-card{flex:1;min-height:0;display:flex;flex-direction:column}
+.ai-prompt-details{border:1px solid var(--border);border-radius:9px;
+  background:var(--surface);padding:7px 10px}
+.ai-prompt-details summary{cursor:pointer;font-size:12px;color:var(--text-2);
+  display:flex;align-items:center;gap:6px;list-style:none;white-space:nowrap}
+.ai-prompt-details summary::-webkit-details-marker{display:none}
+.ai-prompt-details summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.ai-prompt-details[open] summary::before{transform:rotate(90deg)}
+.ai-prompt-details[open] summary{margin-bottom:2px}
+.anno-tabs{display:flex;gap:4px;margin-bottom:10px;background:var(--surface-2);
+  border-radius:9px;padding:3px}
+.anno-tabs .tab{flex:1;background:transparent;border:none;color:var(--text-2);
+  padding:5px 8px;font-size:12px;font-weight:500;border-radius:7px}
+.anno-tabs .tab:hover{color:var(--text);filter:none}
+.anno-tabs .tab.on{background:var(--accent-soft);color:var(--accent);font-weight:600}

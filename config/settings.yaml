@@ -14,17 +14,17 @@ model:
   # Each model has: name, path, enabled, rules (optional)
   models:
     # PPE detection (helmet, vest, Person, etc.)
-    - name: "ppe"
-      path: "models/yolov8-ppe.pt"
-      enabled: true
-      rules: [1]
+  - name: "ppe"
+    path: "models/yolov8-ppe.pt"
+    enabled: true
+    rules: [1]
 
     # Smoking detection (cigarette, smoke)
-    - name: "smoking"
-      path: "models/yolov8-smoking.pt"
-      enabled: true
-      confidence_override: 0.6
-      rules: [13]
+  - name: "smoking"
+    path: "models/yolov8-smoking.pt"
+    enabled: true
+    confidence_override: 0.6
+    rules: [13]
 
   # Legacy single-model path (used if models list is empty)
   # path: "models/yolov8-ppe.pt"
@@ -79,3 +79,8 @@ panel:
   auth_enabled: true
   username: "admin"
   password: "admin"
+llm:
+  enabled: false
+  base_url: https://api.openai.com/v1
+  api_key: ''
+  model: gpt-4o-mini

@@ -546,8 +546,15 @@ class RuntimeState:
     def models_status(self) -> list:
         """Registered model instances with runtime status."""
         entries = self.settings().get("model", {}).get("models", [])
-        detector = self.system._detector if self.system else \
-            self._get_standalone_detector()
+        if self.system is not None:
+            detector = self.system._detector
+        else:
+            try:
+                detector = self._get_standalone_detector()
+            except Exception:
+                # standalone without a usable model config: degrade to plain
+                # registry info instead of failing every status endpoint
+                detector = None
         out = []
         for m in entries:
             name = m.get("name", "unnamed")
@@ -749,7 +756,8 @@ class RuntimeState:
             for model_name in r.models:
                 classes = model_classes.get(model_name)
                 if classes is None:
-                    if self.system is not None or self._get_standalone_detector():
+                    if self.system is not None or \
+                            self._standalone_detector is not None:
                         warnings.append(f"模型未加载: {model_name}")
                     continue
                 bound_classes.update(classes)

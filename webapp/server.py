@@ -24,8 +24,6 @@ from utils.logger import get_logger
 from webapp.state import RuntimeState
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 logger = get_logger("panel.server")
 
@@ -35,8 +33,6 @@ logger = get_logger("panel.server")
 # ----------------------------------------------------------------------
 
 def create_app(state: RuntimeState) -> FastAPI:
-    from fastapi.templating import Jinja2Templates
-
     from webapp.api import alerts, cameras, datasets_api, detect_api, \
         llm_api, models_api, rules_api, settings_api, system, train_api
 
@@ -44,7 +40,6 @@ def create_app(state: RuntimeState) -> FastAPI:
                   redoc_url=None)
 
     app.state.state = state
-    app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     for router in (system.router, cameras.router, alerts.router,
                    models_api.router, rules_api.router, settings_api.router,
@@ -57,22 +52,33 @@ def create_app(state: RuntimeState) -> FastAPI:
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/snapshots", StaticFiles(directory=str(snapshots_dir)),
               name="snapshots")
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-    # panel code (js/css) must revalidate on every load, otherwise a plain
-    # refresh can serve a stale cached copy after an update (304 keeps it cheap)
-    @app.middleware("http")
-    async def revalidate_static(request: Request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-cache"
-        return response
 
     # test-result annotated images also need to be web-accessible
     test_dir = PROJECT_ROOT / "storage" / "test_results"
     test_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/test_results", StaticFiles(directory=str(test_dir)),
               name="test_results")
+
+    # ---------------- React SPA (/app) ----------------
+    # The SPA is the only UI. Shell is exempt from auth (client-side gate +
+    # 401 handling); all data APIs stay protected.
+
+    SPA_DIST = Path(__file__).resolve().parent / "spa" / "dist"
+    if (SPA_DIST / "index.html").exists():
+        from fastapi.responses import FileResponse
+
+        if (SPA_DIST / "assets").exists():
+            app.mount("/app/assets",
+                      StaticFiles(directory=str(SPA_DIST / "assets")),
+                      name="spa_assets")
+
+        async def spa_index():
+            # hashed assets are immutable; the shell itself must revalidate
+            return FileResponse(SPA_DIST / "index.html",
+                                headers={"Cache-Control": "no-cache"})
+
+        app.get("/app", include_in_schema=False)(spa_index)
+        app.get("/app/{path:path}", include_in_schema=False)(spa_index)
 
     # ---------------- pages ----------------
 
@@ -89,10 +95,19 @@ def create_app(state: RuntimeState) -> FastAPI:
 
     @app.get("/")
     async def index():
-        return RedirectResponse("/dashboard")
+        return RedirectResponse("/app")
 
-    for name in PAGES:
-        app.get(f"/{name}", name=f"page_{name}")(page(name))
+    # 旧 UI 已下线：旧页面路径一律 307 到新 UI 对应页（书签兼容）。
+    def legacy_redirect(target: str):
+        async def view(request: Request):
+            return RedirectResponse(target)
+        return view
+
+    for name in ("dashboard", "cameras", "models", "datasets", "annotate",
+                 "train", "rules", "detect", "alerts", "snapshots",
+                 "settings", "logs", "login"):
+        app.get(f"/{name}", name=f"legacy_{name}", include_in_schema=False)(
+            legacy_redirect(f"/app/{name}"))
 
     # ---------------- auth ----------------
 
@@ -114,18 +129,19 @@ def create_app(state: RuntimeState) -> FastAPI:
             return resp
         return JSONResponse(status_code=401, content={"detail": "用户名或密码错误"})
 
-    # Paths that work without auth: login endpoint + page shell, static assets
-    # (page shells are empty frames; all data APIs stay protected).
-    EXEMPT_PREFIXES = ("/api/login", "/static/", "/favicon")
-    # /login must be reachable unauthenticated, or it would redirect to itself
-    EXEMPT_PATHS = EXEMPT_PREFIXES + ("/login", "/")
+    # Paths that work without auth: login endpoint + static assets + SPA shell
+    # (all data APIs stay protected).
+    EXEMPT_PREFIXES = ("/api/login", "/static/", "/favicon", "/app")
+    # "/" and /login must match EXACTLY — a prefix match on "/" would exempt
+    # every path and silently disable auth entirely.
+    EXEMPT_EXACT = ("/login", "/")
 
     class PanelAuth(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             if not auth_enabled:
                 return await call_next(request)
             path = request.url.path
-            if path.startswith(EXEMPT_PATHS):
+            if path in EXEMPT_EXACT or path.startswith(EXEMPT_PREFIXES):
                 return await call_next(request)
             header = request.headers.get("Authorization", "")
             cookie = request.cookies.get(COOKIE, "")
@@ -135,13 +151,6 @@ def create_app(state: RuntimeState) -> FastAPI:
                 return JSONResponse(status_code=401,
                                     content={"detail": "需要登录"})
             return RedirectResponse("/login")
-
-    # dedicated login page shell
-    @app.get("/login")
-    async def login_page(request: Request):
-        return app.state.templates.TemplateResponse(
-            request, "login.html", {"page": "login", "pages": []}
-        )
 
     app.add_middleware(PanelAuth)
 
