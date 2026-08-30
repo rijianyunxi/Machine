@@ -15,6 +15,22 @@ rules:
     coverage_ratio: 0.5
   severity: 3
   enabled: true
+- id: 2
+  name: 门口有人靠近
+  description: ''
+  template: zone_intrusion
+  models:
+  - ppe
+  params:
+    zones:
+    - x: 0
+      y: 0
+      w: 0.29873417721518986
+      h: 0.3457454289732771
+    target_classes:
+    - Person
+  severity: 3
+  enabled: true
 - id: 13
   name: smoking_no_fire_zone
   description: Smoking detected in no-fire zone

@@ -12,6 +12,35 @@
 # 参数 type: classes(逗号分隔类别) / float / int；
 # from_model: true 表示该参数里的类别应存在于规则绑定的模型中（面板校验用）。
 templates:
+  # 区域侵入：在监控画面上框选区域，所选类别出现在区域内才告警
+  zone_intrusion:
+    label: 区域侵入（如有人靠近门口）
+    logic: zone_intrusion
+    params:
+    - name: target_classes
+      type: classes
+      default: []
+      desc: 要监测的目标类别（出现在区域内即告警）
+      from_model: true
+    - name: zones
+      type: zones
+      default: []
+      desc: 告警区域（在监控画面上框选，可多个）
+      from_model: false
+    - name: dwell_seconds
+      type: int
+      default: 0
+      min: 0
+      max: 3600
+      desc: 区域内滞留多少秒才告警（0 为立即）
+      from_model: false
+    - name: min_confidence
+      type: float
+      default: 0.5
+      min: 0.0
+      max: 1.0
+      desc: 最低置信度
+      from_model: false
   # 通用检出：配合任意含目标类别的模型使用（如官方 yolov8n 检测猫/狗/车）
   generic_presence:
     label: 通用检出（出现即告警）

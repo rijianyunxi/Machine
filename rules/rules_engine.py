@@ -34,18 +34,21 @@ TEMPLATE_PRESENCE_NEAR_PERSON = "presence_near_person"
 LOGIC_PRESENCE = "presence"
 LOGIC_PRESENCE_NEAR = "presence_near"
 LOGIC_ABSENCE_REQUIRED = "absence_required"
+LOGIC_ZONE_INTRUSION = "zone_intrusion"
 
 # 判定逻辑的中文显示名（面板下拉/徽章用），key 是内部标识。
 LOGIC_LABELS = {
     LOGIC_PRESENCE: "出现即告警",
     LOGIC_PRESENCE_NEAR: "靠近人员才告警",
     LOGIC_ABSENCE_REQUIRED: "装备缺失检查",
+    LOGIC_ZONE_INTRUSION: "区域侵入告警",
 }
 
 CHECK_LOGICS = {
     LOGIC_PRESENCE: "画面中出现所选类别就告警（如明火、猫、打电话）",
     LOGIC_PRESENCE_NEAR: "所选类别检出且贴着人员才告警（如烟头在人手上）",
     LOGIC_ABSENCE_REQUIRED: "人员没戴该戴的装备、或直接检出违规类就告警（如未戴安全帽）",
+    LOGIC_ZONE_INTRUSION: "所选类别出现在画出的告警区域内才告警（如有人靠近门口、闯入围墙）",
 }
 
 # Seed templates migrated to rule_templates.yaml on first run.
@@ -89,7 +92,7 @@ _SEED_TEMPLATES = {
     },
 }
 
-_PARAM_TYPES = ("classes", "list", "float", "int")
+_PARAM_TYPES = ("classes", "list", "float", "int", "zones")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -221,6 +224,14 @@ class TemplateStore:
                             clean[bound] = float(p[bound])
                         except (TypeError, ValueError):
                             raise ValueError(f"参数 {pname} {bound} 必须是数字")
+            elif ptype == "zones":
+                # 区域矩形列表（归一化 x/y/w/h），由面板画框生成
+                if default is None:
+                    default = []
+                if not isinstance(default, (list, tuple)):
+                    raise ValueError(f"参数 {pname} 默认值必须是区域列表")
+                clean["default"] = [dict(z) for z in default
+                                    if isinstance(z, dict)]
             else:
                 if isinstance(default, str):
                     default = [x.strip() for x in default.split(",") if x.strip()]

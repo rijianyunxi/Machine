@@ -229,8 +229,10 @@ class MachineVisionSystem:
                     continue
 
                 # Analyze for violations
+                h, w = frame_data.frame.shape[:2]
                 violations = self._analyzer.analyze_frame(
-                    cam_id, rule_defs, detections, frame_data.timestamp
+                    cam_id, rule_defs, detections, frame_data.timestamp,
+                    frame_size=(w, h),
                 )
 
                 # Process violations

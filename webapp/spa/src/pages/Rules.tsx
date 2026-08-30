@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
   ModelsResponse,
@@ -20,6 +20,7 @@ const LOGIC_CANONICAL: Record<string, string> = {
   presence: "generic_presence",
   presence_near: "presence_near_person",
   absence_required: "ppe_absence",
+  zone_intrusion: "zone_intrusion",
 };
 
 interface RuleForm {
@@ -126,16 +127,172 @@ function ClassTagsInput({
 }
 
 /* 参数区：按判定逻辑的参数定义渲染（classes=类别点选，float/int=数字） */
+/* 区域画框编辑器：取监控当前帧（无帧则 16:9 灰底），拖拽框选告警区域，
+ * 归一化 x/y/w/h 存储（左上角原点）。 */
+function ZoneRectEditor({
+  value,
+  cameras,
+  onChange,
+}: {
+  value: Array<Record<string, number>>;
+  cameras: Array<{ id: string; name: string; connected: boolean }>;
+  onChange: (v: Array<Record<string, number>>) => void;
+}) {
+  const [camId, setCamId] = useState(cameras[0]?.id || "");
+  const [ghost, setGhost] = useState<null | {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<null | { x0: number; y0: number }>(null);
+
+  const norm = (e: MouseEvent | React.MouseEvent) => {
+    const r = stageRef.current!.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1),
+      y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1),
+    };
+  };
+
+  /* 拖拽全程挂 document：鼠标移出画布也能继续框选 */
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d || !stageRef.current) return;
+      const { x, y } = norm(e);
+      setGhost({
+        x: Math.min(d.x0, x),
+        y: Math.min(d.y0, y),
+        w: Math.abs(x - d.x0),
+        h: Math.abs(y - d.y0),
+      });
+    };
+    const onUp = (e: MouseEvent) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d || !stageRef.current) return;
+      const { x, y } = norm(e);
+      const w = Math.abs(x - d.x0);
+      const h = Math.abs(y - d.y0);
+      if (w > 0.02 && h > 0.02)
+        onChange([
+          ...value,
+          { x: Math.min(d.x0, x), y: Math.min(d.y0, y), w, h },
+        ]);
+      setGhost(null);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  });
+
+  const frameUrl = camId
+    ? `/api/cameras/${encodeURIComponent(camId)}/frame.jpg?w=960`
+    : "";
+
+  return (
+    <div className="zone-editor">
+      <div style={{ padding: "8px 10px", display: "flex", gap: 10, alignItems: "center" }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>
+          参考画面
+        </span>
+        <select
+          style={{ minWidth: 140 }}
+          value={camId}
+          onChange={(e) => setCamId(e.target.value)}
+        >
+          {cameras.length ? (
+            cameras.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || c.id}
+              </option>
+            ))
+          ) : (
+            <option value="">无可用监控</option>
+          )}
+        </select>
+        <span className="muted" style={{ fontSize: 11.5, marginLeft: "auto" }}>
+          在画面上拖拽框选区域，共 {value.length} 个
+        </span>
+      </div>
+      <div
+        ref={stageRef}
+        className="zone-stage"
+        onMouseDown={(e) => {
+          if (e.target !== stageRef.current && !(e.target as HTMLElement).classList.contains("zone-hint"))
+            return;
+          const { x, y } = norm(e);
+          dragRef.current = { x0: x, y0: y };
+          e.preventDefault();
+        }}
+      >
+        {camId ? (
+          <img
+            src={frameUrl}
+            alt=""
+            draggable={false}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.visibility = "hidden";
+            }}
+          />
+        ) : null}
+        <div className="zone-hint">
+          {camId ? "在画面上按住拖拽，框出告警区域" : "选择监控后取画面框选；或直接按画面比例框选"}
+        </div>
+        {value.map((z, i) => (
+          <div
+            key={i}
+            className="zone-rect"
+            style={{
+              left: `${z.x * 100}%`,
+              top: `${z.y * 100}%`,
+              width: `${z.w * 100}%`,
+              height: `${z.h * 100}%`,
+            }}
+          >
+            <button
+              type="button"
+              className="zx"
+              title="删除此区域"
+              onClick={() => onChange(value.filter((_, zi) => zi !== i))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        {ghost ? (
+          <div
+            className="zone-ghost"
+            style={{
+              left: `${ghost.x * 100}%`,
+              top: `${ghost.y * 100}%`,
+              width: `${ghost.w * 100}%`,
+              height: `${ghost.h * 100}%`,
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ParamFields({
   spec,
   values,
   classSources,
+  cameras,
   onPickSource,
   onChange,
 }: {
   spec: TemplateSpec | undefined;
   values: ParamValues;
   classSources: { cls: string; models: string[] }[];
+  cameras: Array<{ id: string; name: string; connected: boolean }>;
   onPickSource: (cls: string, models: string[]) => void;
   onChange: (v: ParamValues) => void;
 }) {
@@ -161,6 +318,21 @@ function ParamFields({
                 value={arr}
                 suggestions={classSources}
                 onPickSource={onPickSource}
+                onChange={(v) => onChange({ ...values, [p.name]: v })}
+              />
+            </div>
+          );
+        }
+        if (p.type === "zones") {
+          const rects = Array.isArray(val)
+            ? (val as Array<Record<string, number>>)
+            : [];
+          return (
+            <div key={p.name}>
+              <label>{p.desc || p.name}</label>
+              <ZoneRectEditor
+                value={rects}
+                cameras={cameras}
                 onChange={(v) => onChange({ ...values, [p.name]: v })}
               />
             </div>
@@ -193,6 +365,10 @@ export default function RulesPage() {
   >({});
   const [models, setModels] = useState<string[]>([]);
   const [modelClasses, setModelClasses] = useState<Record<string, string[]>>({});
+  // 区域画框编辑器的参考画面来源（启用中的监控）
+  const [cameras, setCameras] = useState<
+    Array<{ id: string; name: string; connected: boolean }>
+  >([]);
   const classSources = (() => {
     const m = new Map<string, string[]>();
     for (const [name, classes] of Object.entries(modelClasses))
@@ -246,6 +422,9 @@ export default function RulesPage() {
         ),
       );
     });
+    api<{
+      cameras: Array<{ id: string; name: string; enabled: boolean; connected: boolean }>;
+    }>("/api/cameras").then((r) => setCameras(r.cameras.filter((c) => c.enabled)));
   }, []);
   usePolling(refresh, 60000);
 
@@ -284,7 +463,7 @@ export default function RulesPage() {
         : LOGIC_CANONICAL[form.logic] || "generic_presence";
     const body = {
       id: +form.id || null,
-      name: form.name.trim(),
+      name: form.name.trim() || "未命名规则",
       description: form.description.trim(),
       template,
       models: form.models,
@@ -383,8 +562,10 @@ export default function RulesPage() {
                 <span>
                   类别{" "}
                   {(() => {
+                    // 只聚合字符串数组（类别参数）；zones 等对象数组跳过
                     const clsParams = Object.entries(r.params).filter(
-                      ([, v]) => Array.isArray(v),
+                      ([, v]) =>
+                        Array.isArray(v) && v.every((x) => typeof x === "string"),
                     );
                     const all = [
                       ...new Set(
@@ -450,10 +631,10 @@ export default function RulesPage() {
                   </select>
                 </div>
               </div>
-              <label>规则名称（英文标识）</label>
+              <label>规则名称</label>
               <input
                 className="w320"
-                placeholder="no_safety_vest"
+                placeholder="如：门口有人靠近"
                 value={form.name}
                 onChange={(e) => setFormPatch({ name: e.target.value })}
               />
@@ -517,6 +698,7 @@ export default function RulesPage() {
                 spec={specForLogic(form.logic)}
                 values={form.params}
                 classSources={classSources}
+                cameras={cameras}
                 onPickSource={(cls, srcModels) => {
                   if (!srcModels.length) return;
                   setFormPatch({

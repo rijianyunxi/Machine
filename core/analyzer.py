@@ -21,6 +21,7 @@ from rules.rules_engine import (
     LOGIC_ABSENCE_REQUIRED,
     LOGIC_PRESENCE,
     LOGIC_PRESENCE_NEAR,
+    LOGIC_ZONE_INTRUSION,
     RuleDefinition,
     get_rules_store,
     get_template_store,
@@ -67,7 +68,7 @@ class PresenceCheck:
 
     def __call__(
         self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
-        timestamp: float,
+        timestamp: float, frame_size: Optional[tuple] = None,
     ) -> Optional[Violation]:
         p = rule.params or {}
         trigger_classes = _lower_set(p.get("trigger_classes", []))
@@ -91,7 +92,7 @@ class PresenceNearCheck:
 
     def __call__(
         self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
-        timestamp: float,
+        timestamp: float, frame_size: Optional[tuple] = None,
     ) -> Optional[Violation]:
         p = rule.params or {}
         trigger_classes = _lower_set(p.get("trigger_classes", []))
@@ -140,7 +141,7 @@ class AbsenceRequiredCheck:
 
     def __call__(
         self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
-        timestamp: float,
+        timestamp: float, frame_size: Optional[tuple] = None,
     ) -> Optional[Violation]:
         p = rule.params or {}
         person_classes = _lower_set(p.get("person_classes", ["person"]))
@@ -188,10 +189,72 @@ class AbsenceRequiredCheck:
 
 
 # Dispatch table: template logic primitive -> check implementation.
+class ZoneIntrusionCheck:
+    """Logic: target class inside a drawn alert zone (normalized rects).
+
+    Params: target_classes / zones [{x,y,w,h}] / dwell_seconds / min_confidence.
+    Zones are frame-normalized rectangles (top-left x/y + w/h) — compared
+    against the detection center after converting to pixels via frame_size.
+    With dwell_seconds > 0 the target must stay inside continuously before
+    the violation fires; dwell state is per (camera, rule, class)."""
+
+    # (camera_id, rule_id, cls) -> first-seen timestamp of continuous presence
+    _dwell_since: Dict[tuple, float] = {}
+
+    def __call__(
+        self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
+        timestamp: float, frame_size: Optional[tuple] = None,
+    ) -> Optional[Violation]:
+        p = rule.params or {}
+        target_classes = _lower_set(p.get("target_classes", []))
+        zones = [z for z in (p.get("zones") or []) if isinstance(z, dict)]
+        min_conf = float(p.get("min_confidence", 0.0))
+        dwell = max(0.0, float(p.get("dwell_seconds", 0) or 0))
+        if not target_classes or not zones or not frame_size:
+            return None
+        fw, fh = float(frame_size[0]), float(frame_size[1])
+
+        best = None
+        for det in detections:
+            if det.class_name.lower() not in target_classes:
+                continue
+            if det.confidence < min_conf:
+                continue
+            inside = self._in_zones(det.bbox, zones, fw, fh)
+            key = (camera_id, rule.id, det.class_name.lower())
+            if inside:
+                since = self._dwell_since.setdefault(key, timestamp)
+                if timestamp - since >= dwell and (
+                    best is None or det.confidence > best.confidence
+                ):
+                    best = det
+            else:
+                self._dwell_since.pop(key, None)
+        if best is None:
+            return None
+        return _make_violation(camera_id, rule, best, timestamp)
+
+    @staticmethod
+    def _in_zones(bbox: tuple, zones: list, fw: float, fh: float) -> bool:
+        """True if the detection center point falls inside any zone rect."""
+        x1, y1, x2, y2 = bbox
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        for z in zones:
+            try:
+                zx, zy = float(z["x"]) * fw, float(z["y"]) * fh
+                zw, zh = float(z["w"]) * fw, float(z["h"]) * fh
+            except (KeyError, TypeError, ValueError):
+                continue
+            if zx <= cx <= zx + zw and zy <= cy <= zy + zh:
+                return True
+        return False
+
+
 RULE_LOGICS = {
     LOGIC_PRESENCE: PresenceCheck(),
     LOGIC_PRESENCE_NEAR: PresenceNearCheck(),
     LOGIC_ABSENCE_REQUIRED: AbsenceRequiredCheck(),
+    LOGIC_ZONE_INTRUSION: ZoneIntrusionCheck(),
 }
 
 
@@ -234,8 +297,12 @@ class BehaviorAnalyzer:
         rules: List[RuleDefinition],
         detections: List[Detection],
         timestamp: float,
+        frame_size: Optional[tuple] = None,
     ) -> List[Violation]:
-        """Evaluate the given (enabled) rules for one camera frame."""
+        """Evaluate the given (enabled) rules for one camera frame.
+
+        ``frame_size`` is (width, height) in pixels — required by rules whose
+        params use normalized frame coordinates (e.g. zone intrusion)."""
         violations = []
         for rule in rules:
             logic = self._templates.logic_of(rule.template)
@@ -245,7 +312,8 @@ class BehaviorAnalyzer:
             if self._in_cooldown(camera_id, rule.id, timestamp):
                 continue
 
-            v = check(camera_id, rule, detections, timestamp)
+            v = check(camera_id, rule, detections, timestamp,
+                      frame_size=frame_size)
             if v is not None:
                 violations.append(v)
                 with self._lock:
