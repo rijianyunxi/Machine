@@ -79,6 +79,16 @@ def list_images(request: Request, name: str, limit: int = 1000):
         raise HTTPException(400, str(e))
 
 
+@router.delete("/api/datasets/{name}/images")
+def delete_images(request: Request, name: str, data: dict):
+    try:
+        n = get_state(request).datasets.delete_images(
+            name, data.get("filenames", []))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"deleted": n}
+
+
 @router.get("/api/datasets/{name}/image/{filename}")
 def get_image(request: Request, name: str, filename: str):
     try:

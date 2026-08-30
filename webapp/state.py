@@ -10,6 +10,7 @@ Config writes flow: validate -> ConfigService (backup + write) -> hot-apply
 to live objects -> report what needs a restart.
 """
 
+import copy
 import os
 import re
 import threading
@@ -749,6 +750,8 @@ class RuntimeState:
                 "template": r.template, "models": r.models, "params": r.params,
                 "severity": r.severity, "enabled": r.enabled,
                 "cameras": camera_usage.get(r.id, []),
+                # 画布规则的节点图（老规则为 None），编辑时回填画布编辑器
+                "graph": r.graph or None,
             }
             warnings = []
             bound_classes = set()
@@ -787,6 +790,7 @@ class RuntimeState:
             template=template,
             models=[str(m) for m in data.get("models", [])],
             params=dict(data.get("params", {}) or {}),
+            graph=dict(data.get("graph", {}) or {}),
             severity=int(data.get("severity", 2)),
             enabled=bool(data.get("enabled", True)),
         )
@@ -808,6 +812,12 @@ class RuntimeState:
         from rules.rules_engine import get_template_store
 
         return get_template_store(str(self.config_dir)).specs()
+
+    def node_types(self) -> dict:
+        """可视化画布节点注册表（画布编辑器据此生成交互与参数表单）。"""
+        from core.rules_graph import NODE_TYPES
+
+        return copy.deepcopy(NODE_TYPES)
 
     def template_logics(self) -> dict:
         from rules.rules_engine import get_template_logics
@@ -865,47 +875,84 @@ class RuntimeState:
                        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d.name)],
                       reverse=True)
 
-    def list_snapshots(self, date=None, rule=None, camera=None,
-                       limit=200, offset=0) -> dict:
-        """Grouped snapshot listing: dates -> rules -> files (paged per date)."""
+    def _flat_rule_label(self, img_name: str, id2name: dict) -> str:
+        """Legacy flat layout keeps no rule folder; the rule id is encoded
+        in the file name (CAM*_R01_HHMMSS.jpg). Map it back to rule name."""
+        m = re.match(r".*_R(\d+)_", img_name)
+        if m:
+            rid = int(m.group(1))
+            return id2name.get(rid, f"R{m.group(1).zfill(2)}")
+        return "未分类"
+
+    def list_snapshots(self, date=None, from_date=None, to_date=None, rule=None,
+                       camera=None, limit=200, offset=0) -> dict:
+        """Snapshot listing filtered by day range / rule / camera.
+
+        A day holds rule subdirectories (current layout) or flat jpgs
+        (legacy writer, rule encoded in the file name). Returns per-day
+        summaries plus one flat, mtime-desc page so paging works across
+        a multi-day range."""
         base = self.snapshots_dir()
-        dates = []
+        id2name = None
+        days = []
+        files = []
+        total_size = 0
         for day_dir in self._snapshot_day_dirs(base):
             if date and day_dir.name != date:
                 continue
-            files = []
+            if from_date and day_dir.name < from_date:
+                continue
+            if to_date and day_dir.name > to_date:
+                continue
+            day_files = []
+
+            def add(img, rule_label, rel):
+                nonlocal total_size
+                if camera and not img.name.startswith(f"{camera}_"):
+                    return
+                st = img.stat()
+                day_files.append({
+                    "url": f"/snapshots/{rel}",
+                    "thumb": f"/api/snapshots/thumb?p={quote(rel)}&w=420",
+                    "name": img.name,
+                    "camera": img.name.split("_R")[0],
+                    "rule_dir": rule_label,
+                    "date": day_dir.name,
+                    "size_kb": round(st.st_size / 1024),
+                    "mtime": int(st.st_mtime),
+                })
+                total_size += st.st_size
+
             for rule_dir in sorted(day_dir.iterdir()):
                 if not rule_dir.is_dir():
                     continue
                 if rule and rule_dir.name != rule:
                     continue
-                imgs = sorted(rule_dir.glob("*.jpg"),
-                              key=lambda p: p.stat().st_mtime, reverse=True)
-                if camera:
-                    imgs = [p for p in imgs
-                            if p.name.startswith(f"{camera}_")]
-                for img in imgs:
-                    st = img.stat()
-                    rel = f"{day_dir.name}/{rule_dir.name}/{img.name}"
-                    files.append({
-                        "url": f"/snapshots/{rel}",
-                        "thumb": f"/api/snapshots/thumb?p={quote(rel)}&w=420",
-                        "name": img.name,
-                        "camera": img.name.split("_R")[0],
-                        "rule_dir": rule_dir.name,
-                        "size_kb": round(st.st_size / 1024),
-                        "mtime": int(st.st_mtime),
-                    })
-            if files:
-                day_size = sum(f.stat().st_size for f in day_dir.rglob("*.jpg"))
-                dates.append({
+                for img in rule_dir.glob("*.jpg"):
+                    add(img, rule_dir.name, f"{day_dir.name}/{rule_dir.name}/{img.name}")
+            for img in day_dir.glob("*.jpg"):
+                if id2name is None:
+                    id2name = {r.id: r.name for r in self.rules_store.get_all()}
+                label = self._flat_rule_label(img.name, id2name)
+                if rule and label != rule:
+                    continue
+                add(img, label, f"{day_dir.name}/{img.name}")
+            if day_files:
+                days.append({
                     "date": day_dir.name,
-                    "count": len(files),
-                    "total": len(files),
-                    "size_mb": round(day_size / 1048576, 1),
-                    "files": files[offset:offset + limit],
+                    "count": len(day_files),
+                    "size_mb": round(sum(f["size_kb"] for f in day_files) / 1024, 1),
                 })
-        return {"dates": dates, "offset": offset, "limit": limit}
+                files.extend(day_files)
+        files.sort(key=lambda f: f["mtime"], reverse=True)
+        return {
+            "dates": days,
+            "files": files[offset:offset + limit],
+            "total": len(files),
+            "total_size_mb": round(total_size / 1048576, 1),
+            "offset": offset,
+            "limit": limit,
+        }
 
     def storage_usage(self) -> dict:
         base = self.snapshots_dir()

@@ -1,0 +1,386 @@
+"""
+Rule-graph engine - node-graph evaluation for the visual rule canvas.
+
+A rule can be a visual canvas composition instead of a fixed logic primitive:
+its template is ``graph`` and the node graph itself lives on the rule's
+``graph`` field (see docs/RULE_GRAPH_DESIGN.md). Every frame the graph is
+evaluated once in topological order; each node turns its input signals into
+``{state: bool, targets: list[Detection]}`` (targets are pixel-space detection
+boxes so downstream spatial nodes can do geometry) and the ``alert`` node
+emits a Violation on the input's rising edge (prev frame false -> now true).
+
+Evaluation state (duration timers / alert edge memory) is kept per
+(rule_id, node_id) in module-level dicts — same pattern as ZoneIntrusionCheck's
+dwell tracking in core/analyzer.py.
+"""
+
+from typing import Dict, List, Optional
+
+from core.detector import Detection
+from utils.logger import get_logger
+
+logger = get_logger("rules_graph")
+
+# ============================================================
+# Node registry (v1: 8 types, docs/RULE_GRAPH_DESIGN.md §4)
+# ============================================================
+# category: 目标/空间/时间/逻辑/输出 —— 前端积木库按此分组展示。
+# params 是参数 schema（name/type/default/desc[/min/max]），前端据此自动生成
+# 参数表单；type 约定：string[]（类别多选）/ zones（画面框选）/ float / int。
+
+NODE_TYPES: Dict[str, dict] = {
+    "class_present": {
+        "label": "类别在场",
+        "category": "目标",
+        "inputs": 0,
+        "outputs": 1,
+        "params": [
+            {"name": "classes", "type": "string[]", "default": [],
+             "desc": "要监测的类别（必填，任一检出即视为在场）"},
+            {"name": "min_confidence", "type": "float", "default": 0.5,
+             "min": 0.0, "max": 1.0, "desc": "最低置信度"},
+        ],
+    },
+    "class_absent": {
+        "label": "类别离场",
+        "category": "目标",
+        "inputs": 0,
+        "outputs": 1,
+        "params": [
+            {"name": "classes", "type": "string[]", "default": [],
+             "desc": "要监测的类别（必填，全部不在场才算通过）"},
+            {"name": "min_confidence", "type": "float", "default": 0.5,
+             "min": 0.0, "max": 1.0, "desc": "最低置信度（低于该值的检出不算在场）"},
+        ],
+    },
+    "near_class": {
+        "label": "靠近参照类别",
+        "category": "空间",
+        "inputs": 1,
+        "outputs": 1,
+        "params": [
+            {"name": "ref_classes", "type": "string[]", "default": [],
+             "desc": "参照类别（必填，目标框与其检出框相交才算靠近）"},
+            {"name": "margin", "type": "float", "default": 0.2,
+             "min": 0.0, "max": 2.0,
+             "desc": "参照框外扩比例（0 为必须实际相交）"},
+        ],
+    },
+    "in_zone": {
+        "label": "在指定区域内",
+        "category": "空间",
+        "inputs": 1,
+        "outputs": 1,
+        "params": [
+            {"name": "zones", "type": "zones", "default": [],
+             "desc": "区域列表（归一化 x/y/w/h，左上角原点，可多个）"},
+        ],
+    },
+    "duration": {
+        "label": "持续N秒",
+        "category": "时间",
+        "inputs": 1,
+        "outputs": 1,
+        "params": [
+            {"name": "seconds", "type": "float", "default": 10,
+             "min": 0.0, "desc": "输入连续为真多少秒后输出为真（0 为立即）"},
+        ],
+    },
+    "not": {
+        "label": "非",
+        "category": "逻辑",
+        "inputs": 1,
+        "outputs": 1,
+        "params": [],
+    },
+    "and": {
+        "label": "且",
+        "category": "逻辑",
+        "inputs": 2,
+        "outputs": 1,
+        "params": [],
+    },
+    "or": {
+        "label": "或",
+        "category": "逻辑",
+        "inputs": 2,
+        "outputs": 1,
+        "params": [],
+    },
+    "alert": {
+        "label": "告警",
+        "category": "输出",
+        "inputs": 1,
+        "outputs": 1,
+        "params": [],
+    },
+}
+
+# 跨帧记忆：(rule_id, node_id) -> duration 连续为真起点 / alert 上一帧输入状态
+_duration_since: Dict[tuple, float] = {}
+_alert_prev: Dict[tuple, bool] = {}
+
+
+def _reset_state():
+    """清空全部跨帧记忆（测试辅助；运行态按 (rule_id, node_id) 保留）。"""
+    _duration_since.clear()
+    _alert_prev.clear()
+
+
+# ============================================================
+# Signal helpers
+# ============================================================
+
+def _lower_set(names) -> set:
+    return {n.lower() for n in (names or [])}
+
+
+def _false_signal() -> dict:
+    return {"state": False, "targets": []}
+
+
+def _topo_sort(node_map: dict, edges: list):
+    """Kahn 拓扑排序。
+
+    返回 (order, incoming)：order 是可求值的节点 id 序列，incoming[node_id]
+    是按连线顺序排列的输入节点 id 列表。有环时返回 (None, None)。
+    """
+    incoming: Dict[object, list] = {nid: [] for nid in node_map}
+    outgoing: Dict[object, list] = {nid: [] for nid in node_map}
+    for e in edges or []:
+        if not isinstance(e, dict):
+            continue
+        src, dst = e.get("from"), e.get("to")
+        if src in incoming and dst in incoming:
+            incoming[dst].append(src)
+            outgoing[src].append(dst)
+
+    indeg = {nid: len(v) for nid, v in incoming.items()}
+    queue = [nid for nid, d in indeg.items() if d == 0]
+    order = []
+    while queue:
+        nid = queue.pop()
+        order.append(nid)
+        for nxt in outgoing[nid]:
+            indeg[nxt] -= 1
+            if indeg[nxt] == 0:
+                queue.append(nxt)
+    if len(order) != len(incoming):
+        return None, None  # 有节点未被处理：图里存在环
+    return order, incoming
+
+
+# ============================================================
+# Per-node evaluation (alert handled separately in evaluate_graph)
+# ============================================================
+
+def _eval_class_presence(params: dict, detections: List[Detection],
+                         absent: bool) -> dict:
+    """class_present / class_absent：类别在场或全部离场。"""
+    classes = _lower_set(params.get("classes"))
+    if not classes:
+        return _false_signal()  # classes 必填，缺省视为不命中
+    min_conf = params.get("min_confidence", 0.5)
+    min_conf = 0.5 if min_conf is None else float(min_conf)
+    hits = [d for d in detections
+            if d.class_name.lower() in classes and d.confidence >= min_conf]
+    if absent:
+        # 全部不在场 -> true；离场信号本身没有目标框
+        return {"state": not hits, "targets": []}
+    return {"state": bool(hits), "targets": hits}
+
+
+def _center_in_zones(bbox: tuple, zones: list, fw: float, fh: float) -> bool:
+    """True if the detection center point falls inside any zone rect."""
+    x1, y1, x2, y2 = bbox
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    for z in zones:
+        try:
+            zx, zy = float(z["x"]) * fw, float(z["y"]) * fh
+            zw, zh = float(z["w"]) * fw, float(z["h"]) * fh
+        except (KeyError, TypeError, ValueError):
+            continue
+        if zx <= cx <= zx + zw and zy <= cy <= zy + zh:
+            return True
+    return False
+
+
+def _eval_near_class(params: dict, input_signal: dict,
+                     detections: List[Detection]) -> dict:
+    """near_class：输入 targets 与参照类别检出框（按 margin 外扩）相交。"""
+    targets = list(input_signal.get("targets") or [])
+    if not targets:
+        return _false_signal()
+    ref_classes = _lower_set(params.get("ref_classes"))
+    if not ref_classes:
+        return _false_signal()  # 参照类别必填，缺省视为不命中
+    margin = params.get("margin", 0.2)
+    margin = 0.2 if margin is None else max(0.0, float(margin))
+    refs = [d for d in detections if d.class_name.lower() in ref_classes]
+    kept = [d for d in targets if any(_bboxes_touch(d.bbox, r.bbox, margin)
+                                      for r in refs)]
+    return {"state": bool(kept), "targets": kept}
+
+
+def _bboxes_touch(a: tuple, b: tuple, margin: float) -> bool:
+    """True if box a intersects box b expanded by margin of b's size."""
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    mx = (bx2 - bx1) * margin
+    my = (by2 - by1) * margin
+    return ax1 < bx2 + mx and ax2 > bx1 - mx and ay1 < by2 + my and ay2 > by1 - my
+
+
+def _eval_in_zone(params: dict, input_signal: dict,
+                  frame_size: Optional[tuple]) -> dict:
+    """in_zone：输入 targets 的中心点落在任一 zone 内（归一化换算像素）。"""
+    zones = [z for z in (params.get("zones") or []) if isinstance(z, dict)]
+    targets = input_signal.get("targets") or []
+    if not zones or not targets or not frame_size:
+        return _false_signal()
+    fw, fh = float(frame_size[0]), float(frame_size[1])
+    inside = [d for d in targets if _center_in_zones(d.bbox, zones, fw, fh)]
+    return {"state": bool(inside), "targets": inside}
+
+
+def _eval_duration(params: dict, input_signal: dict, timestamp: float,
+                   key: tuple) -> dict:
+    """duration：输入连续为真计时，达到 seconds 才输出 true；中断即清零。"""
+    seconds = params.get("seconds", 10)
+    seconds = 10.0 if seconds is None else max(0.0, float(seconds))
+    if not input_signal.get("state"):
+        _duration_since.pop(key, None)  # 中断即清零
+        return _false_signal()
+    since = _duration_since.setdefault(key, timestamp)
+    if timestamp - since >= seconds:
+        # targets 原样透传
+        return {"state": True,
+                "targets": list(input_signal.get("targets") or [])}
+    return _false_signal()
+
+
+def _eval_node(node_id, node: dict, inputs: List[dict],
+               detections: List[Detection], frame_size: Optional[tuple],
+               timestamp: float, rule_id: int) -> dict:
+    """求值单个非 alert 节点，返回信号 {state: bool, targets: list}。"""
+    ntype = node["type"]
+    if NODE_TYPES[ntype]["inputs"] > 0 and not inputs:
+        return _false_signal()  # 必需输入未连线：视为恒假，避免空图误报
+    params = node.get("params") or {}
+
+    if ntype in ("class_present", "class_absent"):
+        return _eval_class_presence(params, detections,
+                                    absent=(ntype == "class_absent"))
+    if ntype == "in_zone":
+        return _eval_in_zone(params, inputs[0], frame_size)
+    if ntype == "near_class":
+        return _eval_near_class(params, inputs[0], detections)
+    if ntype == "duration":
+        return _eval_duration(params, inputs[0], timestamp,
+                              key=(rule_id, node_id))
+    if ntype == "not":
+        # state 取反，targets 清空
+        return {"state": not inputs[0].get("state", False), "targets": []}
+
+    # and / or：state 取与/或，targets 取第一个有 targets 的输入
+    states = [bool(s.get("state")) for s in inputs]
+    state = all(states) if ntype == "and" else any(states)
+    targets = next((list(s.get("targets") or []) for s in inputs
+                    if s.get("targets")), [])
+    return {"state": state, "targets": targets}
+
+
+def _make_violation(rule_id: int, rule, timestamp: float,
+                    det: Optional[Detection], camera_id: str = ""):
+    """构造 Violation（det 为空时 bbox=None、confidence=0）。
+
+    core.analyzer 在模块级导入本模块，故 Violation 延迟导入避免循环依赖。
+    """
+    from core.analyzer import Violation
+
+    return Violation(
+        camera_id=camera_id,
+        rule_id=rule_id,
+        rule_name=str(getattr(rule, "name", "") or f"rule_{rule_id}"),
+        description=str(getattr(rule, "description", "") or ""),
+        confidence=float(det.confidence) if det is not None else 0.0,
+        severity=int(getattr(rule, "severity", 2) or 2),
+        timestamp=timestamp,
+        bbox=det.bbox if det is not None else None,
+    )
+
+
+def _eval_alert(node_id, input_signal: dict, timestamp: float, rule_id: int,
+                rule, camera_id: str):
+    """alert：消耗信号不产生输出；输入上升沿（上帧假→本帧真）时产出 Violation。
+
+    bbox 取该信号 targets 中置信度最高者，targets 为空则 bbox=None。
+    """
+    key = (rule_id, node_id)
+    state = bool(input_signal.get("state"))
+    prev = _alert_prev.get(key, False)
+    _alert_prev[key] = state
+    if not (state and not prev):
+        return None
+    targets = input_signal.get("targets") or []
+    best = max(targets, key=lambda d: d.confidence) if targets else None
+    return _make_violation(rule_id, rule, timestamp, best, camera_id)
+
+
+# ============================================================
+# Main entry
+# ============================================================
+
+def evaluate_graph(
+    graph: dict,
+    detections: List[Detection],
+    frame_size: Optional[tuple],
+    timestamp: float,
+    rule_id: int,
+    rule=None,
+    camera_id: str = "",
+) -> Optional["Violation"]:
+    """对一个规则图做一次拓扑序求值（契约 docs/RULE_GRAPH_DESIGN.md §3/§5）。
+
+    返回本帧产生的 Violation（alert 上升沿触发），无告警返回 None；
+    graph 缺失/为空/含未知节点类型/有环时整图跳过（返回 None，有环记 warning）。
+
+    ``rule`` 用于填充告警的名称/描述/严重度（RuleDefinition 或兼容对象，
+    为 None 时回退到 rule_id）；``camera_id`` 透传到 Violation.camera_id。
+    """
+    if not isinstance(graph, dict) or not graph:
+        return None
+    raw_nodes = graph.get("nodes") or []
+    if not raw_nodes:
+        return None
+
+    node_map = {}
+    for n in raw_nodes:
+        nid = n.get("id") if isinstance(n, dict) else None
+        if not isinstance(nid, (str, int)) or n.get("type") not in NODE_TYPES:
+            logger.warning(f"规则 {rule_id} 的 graph 节点非法或类型未知: {n!r}")
+            return None
+        node_map[nid] = n
+
+    order, incoming = _topo_sort(node_map, graph.get("edges"))
+    if order is None:
+        logger.warning(f"规则 {rule_id} 的 graph 存在环，整图跳过")
+        return None
+
+    signals: Dict[object, dict] = {}
+    for nid in order:
+        node = node_map[nid]
+        inputs = [signals.get(src) or _false_signal() for src in incoming[nid]]
+        if node["type"] == "alert":
+            violation = _eval_alert(
+                nid, inputs[0] if inputs else _false_signal(),
+                timestamp, rule_id, rule, camera_id,
+            )
+            if violation is not None:
+                return violation
+            signals[nid] = _false_signal()  # alert 消耗信号，无输出
+        else:
+            signals[nid] = _eval_node(
+                nid, node, inputs, detections, frame_size, timestamp, rule_id
+            )
+    return None

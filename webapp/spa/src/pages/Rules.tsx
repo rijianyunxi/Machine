@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type {
+  GraphNodeTypeSpec,
   ModelsResponse,
+  NodeTypesResponse,
   ParamSpec,
   RuleEntry,
+  RuleGraph,
   TemplateSpec,
 } from "../api/types";
 import { Page } from "../layout/Page";
@@ -12,6 +15,10 @@ import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
 import { useToast } from "../ui/Toast";
 import { Chip, Empty, useBusy } from "../ui/badges";
+import { ZoneRectEditor } from "../ui/ZoneRectEditor";
+import { GraphEditor, validateGraph } from "../ui/GraphEditor";
+import { BLANK_PRESET, GRAPH_PRESETS, type GraphPreset } from "./graphPresets";
+import { CONVERTIBLE_TEMPLATES, graphToParams, ruleToGraph } from "./graphConvert";
 
 type ParamValues = Record<string, unknown>;
 
@@ -32,6 +39,9 @@ interface RuleForm {
   params: ParamValues;
   severity: string;
   enabled: boolean;
+  /* template === "graph"：画布规则（判定逻辑区域整体替换为 GraphEditor） */
+  template: string;
+  graph: RuleGraph;
 }
 
 /* 类别 tag 输入：已选为可删除的 chip；下方是模型类别建议（点选即加，
@@ -126,160 +136,7 @@ function ClassTagsInput({
   );
 }
 
-/* 参数区：按判定逻辑的参数定义渲染（classes=类别点选，float/int=数字） */
-/* 区域画框编辑器：取监控当前帧（无帧则 16:9 灰底），拖拽框选告警区域，
- * 归一化 x/y/w/h 存储（左上角原点）。 */
-function ZoneRectEditor({
-  value,
-  cameras,
-  onChange,
-}: {
-  value: Array<Record<string, number>>;
-  cameras: Array<{ id: string; name: string; connected: boolean }>;
-  onChange: (v: Array<Record<string, number>>) => void;
-}) {
-  const [camId, setCamId] = useState(cameras[0]?.id || "");
-  const [ghost, setGhost] = useState<null | {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  }>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<null | { x0: number; y0: number }>(null);
-
-  const norm = (e: MouseEvent | React.MouseEvent) => {
-    const r = stageRef.current!.getBoundingClientRect();
-    return {
-      x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1),
-      y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1),
-    };
-  };
-
-  /* 拖拽全程挂 document：鼠标移出画布也能继续框选 */
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d || !stageRef.current) return;
-      const { x, y } = norm(e);
-      setGhost({
-        x: Math.min(d.x0, x),
-        y: Math.min(d.y0, y),
-        w: Math.abs(x - d.x0),
-        h: Math.abs(y - d.y0),
-      });
-    };
-    const onUp = (e: MouseEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
-      if (!d || !stageRef.current) return;
-      const { x, y } = norm(e);
-      const w = Math.abs(x - d.x0);
-      const h = Math.abs(y - d.y0);
-      if (w > 0.02 && h > 0.02)
-        onChange([
-          ...value,
-          { x: Math.min(d.x0, x), y: Math.min(d.y0, y), w, h },
-        ]);
-      setGhost(null);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-  });
-
-  const frameUrl = camId
-    ? `/api/cameras/${encodeURIComponent(camId)}/frame.jpg?w=960`
-    : "";
-
-  return (
-    <div className="zone-editor">
-      <div style={{ padding: "8px 10px", display: "flex", gap: 10, alignItems: "center" }}>
-        <span className="muted" style={{ fontSize: 11.5 }}>
-          参考画面
-        </span>
-        <select
-          style={{ minWidth: 140 }}
-          value={camId}
-          onChange={(e) => setCamId(e.target.value)}
-        >
-          {cameras.length ? (
-            cameras.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name || c.id}
-              </option>
-            ))
-          ) : (
-            <option value="">无可用监控</option>
-          )}
-        </select>
-        <span className="muted" style={{ fontSize: 11.5, marginLeft: "auto" }}>
-          在画面上拖拽框选区域，共 {value.length} 个
-        </span>
-      </div>
-      <div
-        ref={stageRef}
-        className="zone-stage"
-        onMouseDown={(e) => {
-          if (e.target !== stageRef.current && !(e.target as HTMLElement).classList.contains("zone-hint"))
-            return;
-          const { x, y } = norm(e);
-          dragRef.current = { x0: x, y0: y };
-          e.preventDefault();
-        }}
-      >
-        {camId ? (
-          <img
-            src={frameUrl}
-            alt=""
-            draggable={false}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.visibility = "hidden";
-            }}
-          />
-        ) : null}
-        <div className="zone-hint">
-          {camId ? "在画面上按住拖拽，框出告警区域" : "选择监控后取画面框选；或直接按画面比例框选"}
-        </div>
-        {value.map((z, i) => (
-          <div
-            key={i}
-            className="zone-rect"
-            style={{
-              left: `${z.x * 100}%`,
-              top: `${z.y * 100}%`,
-              width: `${z.w * 100}%`,
-              height: `${z.h * 100}%`,
-            }}
-          >
-            <button
-              type="button"
-              className="zx"
-              title="删除此区域"
-              onClick={() => onChange(value.filter((_, zi) => zi !== i))}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        {ghost ? (
-          <div
-            className="zone-ghost"
-            style={{
-              left: `${ghost.x * 100}%`,
-              top: `${ghost.y * 100}%`,
-              width: `${ghost.w * 100}%`,
-              height: `${ghost.h * 100}%`,
-            }}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
+/* 参数区：按判定逻辑的参数定义渲染（classes=类别点选，float/int=数字，zones=区域画框） */
 
 function ParamFields({
   spec,
@@ -375,9 +232,15 @@ export default function RulesPage() {
       for (const c of classes) m.set(c, [...(m.get(c) || []), name]);
     return [...m.entries()].map(([cls, ms]) => ({ cls, models: ms }));
   })();
+  // 画布参数面板的类别建议：全部模型类别的并集
+  const classOptions = [...new Set(Object.values(modelClasses).flat())];
   const [summary, setSummary] = useState<
     Record<string, { false_positive_rate: number | null }> | null
   >(null);
+  // 画布节点注册表（GET /api/rules/node-types）：失败时画布编辑器报错并禁用保存
+  const [nodeTypes, setNodeTypes] = useState<Record<string, GraphNodeTypeSpec>>({});
+  const [nodeTypesFailed, setNodeTypesFailed] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   const [form, setForm] = useState<RuleForm | null>(null);
@@ -425,24 +288,56 @@ export default function RulesPage() {
     api<{
       cameras: Array<{ id: string; name: string; enabled: boolean; connected: boolean }>;
     }>("/api/cameras").then((r) => setCameras(r.cameras.filter((c) => c.enabled)));
+    api<NodeTypesResponse>("/api/rules/node-types")
+      .then((r) => setNodeTypes(r.node_types || {}))
+      .catch(() => setNodeTypesFailed(true));
   }, []);
   usePolling(refresh, 60000);
 
   /* ---------------- 规则弹窗 ---------------- */
 
+  const cloneGraph = (g: RuleGraph): RuleGraph =>
+    JSON.parse(JSON.stringify(g)) as RuleGraph;
+
+  const baseForm = (r?: RuleEntry) => ({
+    id: r ? String(r.id) : "",
+    name: r?.name || "",
+    description: r?.description || "",
+    models: r?.models || [],
+    params: r?.params || {},
+    severity: String(Math.min(4, Math.max(1, r?.severity ?? 3))),
+    enabled: r ? r.enabled : true,
+  });
+
+  /* 编辑存量规则：template=graph 直接进画布，老模板保持"何时告警"表单 */
   const openRuleEdit = async (id: number | null) => {
     setEditing(id);
     if (!rules?.length || !Object.keys(templates).length) await refresh();
     const r = rules?.find((x) => x.id === id);
+    const template = r?.template || "graph";
+    // 存量可转换模板 → 等价画布（保存时无损回写原模板参数）
+    const converted = r && CONVERTIBLE_TEMPLATES[template] && !r.graph
+      ? ruleToGraph(template, r.params || {})
+      : null;
     setForm({
-      id: r ? String(r.id) : "",
-      name: r?.name || "",
-      description: r?.description || "",
-      logic: r ? logicOf(r.template) || "presence" : "presence",
-      models: r?.models || [],
-      params: r?.params || {},
-      severity: String(Math.min(4, Math.max(1, r?.severity ?? 3))),
-      enabled: r ? r.enabled : true,
+      ...baseForm(r),
+      logic: r ? logicOf(template) || "presence" : "presence",
+      template,
+      graph: r?.graph
+        ? cloneGraph(r.graph)
+        : converted || { nodes: [], edges: [] },
+    });
+    setRuleOpen(true);
+  };
+
+  /* 从预设画廊新建：template 固定 graph，画布取预置图（深拷贝） */
+  const openRuleFromPreset = (p: GraphPreset) => {
+    setEditing(null);
+    setForm({
+      ...baseForm(),
+      logic: "graph",
+      template: "graph",
+      graph: cloneGraph(p.graph),
     });
     setRuleOpen(true);
   };
@@ -455,6 +350,41 @@ export default function RulesPage() {
 
   const saveRule = wrap("rule", async () => {
     if (!form) return;
+    const useCanvas = form.template === "graph" ||
+      !!CONVERTIBLE_TEMPLATES[form.template];
+    if (useCanvas) {
+      const errs = validateGraph(form.graph, nodeTypes);
+      if (errs.length) {
+        toast(errs[0], false);
+        return;
+      }
+      // 结构仍是原模板的规范链路 → 参数无损回写，检测行为零变化；
+      // 结构被改动 → 转存为独立图规则
+      const legacyParams = CONVERTIBLE_TEMPLATES[form.template]
+        ? graphToParams(form.template, form.graph)
+        : null;
+      const body = {
+        id: +form.id || null,
+        name: form.name.trim() || "未命名规则",
+        description: form.description.trim(),
+        template: legacyParams ? (form.template as string) : ("graph" as const),
+        models: form.models,
+        params: legacyParams || {},
+        severity: +form.severity,
+        enabled: form.enabled,
+        graph: legacyParams ? undefined : form.graph,
+      };
+      try {
+        if (editing) await api(`/api/rules/${editing}`, { method: "PUT", body });
+        else await api("/api/rules", { method: "POST", body });
+        toast("已保存，下一帧生效");
+        setRuleOpen(false);
+        refresh();
+      } catch (e) {
+        toast((e as Error).message, false);
+      }
+      return;
+    }
     // 编辑且原模板就是同一判定逻辑 → 保留原模板（尊重自定义参数定义）
     const cur = editing ? rules?.find((x) => x.id === editing) : null;
     const template =
@@ -525,11 +455,17 @@ export default function RulesPage() {
     return templates[LOGIC_CANONICAL[logic]];
   };
 
+  /* 画布规则校验：不满足时禁用保存（节点库失败也禁用） */
+  const graphErrs =
+    form && form.template === "graph" && !nodeTypesFailed
+      ? validateGraph(form.graph, nodeTypes)
+      : [];
+
   return (
     <Page
       title="规则配置"
       subtitle="三步完成一个检测：模型里来类别，规则定何时告警，监控里选哪路画面"
-      actions={<button onClick={() => openRuleEdit(null)}>＋ 新建规则</button>}
+      actions={<button onClick={() => setGalleryOpen(true)}>＋ 新建规则</button>}
     >
       <div className="card">
         {rules === null ? (
@@ -558,7 +494,14 @@ export default function RulesPage() {
                 <div className="warn">⚠ {r.warnings.join("；")}</div>
               ) : null}
               <div className="meta">
-                <span>{logicLabel(r.template)}</span>
+                {r.template === "graph" ? (
+                  <>
+                    <Chip text="自定义组合" color="blue" />
+                    {r.graph ? <span>{r.graph.nodes.length} 个节点</span> : null}
+                  </>
+                ) : (
+                  <span>{logicLabel(r.template)}</span>
+                )}
                 <span>
                   类别{" "}
                   {(() => {
@@ -587,18 +530,66 @@ export default function RulesPage() {
         )}
       </div>
 
+      {/* 预设画廊：新建规则先选场景（契约 §6） */}
+      {galleryOpen && (
+        <Modal
+          title="新建规则 · 选择场景"
+          width={840}
+          onClose={() => setGalleryOpen(false)}
+        >
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+            选择一个预置场景快速开始（进入后可在画布上继续调整），或从空白画布自由搭建。
+          </p>
+          <div className="preset-grid">
+            {[...GRAPH_PRESETS, BLANK_PRESET].map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className={"preset-card" + (p.key === "blank" ? " blank" : "")}
+                onClick={() => {
+                  setGalleryOpen(false);
+                  openRuleFromPreset(p);
+                }}
+              >
+                <b>{p.title}</b>
+                <span>{p.desc}</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+
       {/* 规则弹窗 */}
       {ruleOpen && form && (
         <Modal
-          title={editing ? `编辑规则 · R${editing}` : "新建规则"}
-          width={860}
+          title={
+            editing
+              ? `编辑规则 · R${editing}`
+              : form.template === "graph"
+                ? "新建规则 · 画布"
+                : "新建规则"
+          }
+          width={form.template === "graph" || CONVERTIBLE_TEMPLATES[form.template] ? 1140 : 860}
+          tall={form.template === "graph" || !!CONVERTIBLE_TEMPLATES[form.template]}
           onClose={() => setRuleOpen(false)}
           footer={
             <>
               <button className="ghost" onClick={() => setRuleOpen(false)}>
                 取消
               </button>
-              <button disabled={busy.rule} onClick={saveRule}>
+              <button
+                disabled={
+                  busy.rule ||
+                  (form.template === "graph" &&
+                    (nodeTypesFailed || graphErrs.length > 0))
+                }
+                onClick={saveRule}
+                title={
+                  form.template === "graph" && graphErrs.length
+                    ? graphErrs[0]
+                    : undefined
+                }
+              >
                 保存
               </button>
             </>
@@ -644,18 +635,23 @@ export default function RulesPage() {
                 value={form.description}
                 onChange={(e) => setFormPatch({ description: e.target.value })}
               />
-              <label>何时告警（判定逻辑）</label>
-              <select
-                style={{ width: "100%" }}
-                value={form.logic}
-                onChange={(e) => switchLogic(e.target.value)}
-              >
-                {Object.entries(logics).map(([k, d]) => (
-                  <option key={k} value={k}>
-                    {d.label} — {d.desc}
-                  </option>
-                ))}
-              </select>
+              {form.template !== "graph" &&
+              !CONVERTIBLE_TEMPLATES[form.template] ? (
+                <>
+                  <label>何时告警（判定逻辑）</label>
+                  <select
+                    style={{ width: "100%" }}
+                    value={form.logic}
+                    onChange={(e) => switchLogic(e.target.value)}
+                  >
+                    {Object.entries(logics).map(([k, d]) => (
+                      <option key={k} value={k}>
+                        {d.label} — {d.desc}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
               <label
                 style={{
                   display: "flex",
@@ -694,21 +690,39 @@ export default function RulesPage() {
                   </label>
                 ))}
               </div>
-              <ParamFields
-                spec={specForLogic(form.logic)}
-                values={form.params}
-                classSources={classSources}
-                cameras={cameras}
-                onPickSource={(cls, srcModels) => {
-                  if (!srcModels.length) return;
-                  setFormPatch({
-                    models: [...new Set([...form.models, ...srcModels])],
-                  });
-                }}
-                onChange={(params) => setFormPatch({ params })}
-              />
+              {form.template !== "graph" &&
+              !CONVERTIBLE_TEMPLATES[form.template] ? (
+                <ParamFields
+                  spec={specForLogic(form.logic)}
+                  values={form.params}
+                  classSources={classSources}
+                  cameras={cameras}
+                  onPickSource={(cls, srcModels) => {
+                    if (!srcModels.length) return;
+                    setFormPatch({
+                      models: [...new Set([...form.models, ...srcModels])],
+                    });
+                  }}
+                  onChange={(params) => setFormPatch({ params })}
+                />
+              ) : (
+                <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
+                  判定逻辑由下方画布决定：从积木库添加节点、连线组成检测链路，
+                  画布需要恰好一个「告警」节点。
+                </p>
+              )}
             </div>
           </div>
+          {form.template === "graph" || CONVERTIBLE_TEMPLATES[form.template] ? (
+            <GraphEditor
+              graph={form.graph}
+              onChange={(g) => setFormPatch({ graph: g })}
+              nodeTypes={nodeTypes}
+              classOptions={classOptions}
+              cameras={cameras}
+              loadError={nodeTypesFailed}
+            />
+          ) : null}
         </Modal>
       )}
     </Page>

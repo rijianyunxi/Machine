@@ -28,6 +28,50 @@ export interface TemplateSpec {
   params: ParamSpec[];
 }
 
+/* ---------- 可视化规则画布（契约 docs/RULE_GRAPH_DESIGN.md §2/§5） ---------- */
+
+/** 图节点：id 为图内唯一标识；params 按节点类型 schema 取值 */
+export interface GraphNode {
+  id: string;
+  type: string;
+  params: Record<string, unknown>;
+}
+
+/** 有向边 from → to（无端口索引，v1 每节点至多一个输出点） */
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+/** 画布数据（rules.yaml 的 graph 字段） */
+export interface RuleGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+/** 节点参数 schema 项（用于前端自动生成表单） */
+export interface GraphParamSpec {
+  name: string;
+  type: string; // "classes" | "zones" | "float" | "int" | ...
+  default?: unknown;
+  desc?: string;
+  min?: number;
+  max?: number;
+}
+
+/** 节点类型注册表项（GET /api/rules/node-types） */
+export interface GraphNodeTypeSpec {
+  label: string; // 中文名，如「类别在场」
+  category: string; // 中文分类：目标/空间/时间/逻辑/输出
+  inputs: number;
+  outputs: number;
+  params: GraphParamSpec[];
+}
+
+export interface NodeTypesResponse {
+  node_types: Record<string, GraphNodeTypeSpec>;
+}
+
 export interface RuleEntry {
   id: number;
   name: string;
@@ -39,6 +83,7 @@ export interface RuleEntry {
   enabled: boolean;
   cameras: string[];
   warnings?: string[];
+  graph?: RuleGraph | null; // template === "graph" 时存在
 }
 
 export interface ModelInstance {
@@ -126,8 +171,6 @@ export interface SnapshotDate {
   date: string;
   count: number;
   size_mb: number;
-  total?: number;
-  files?: SnapshotFile[];
 }
 
 export interface SnapshotFile {
@@ -135,6 +178,19 @@ export interface SnapshotFile {
   size_kb: number;
   thumb: string;
   url: string;
+  camera: string;
+  rule_dir: string;
+  date: string;
+  mtime?: number;
+}
+
+export interface SnapshotPage {
+  dates: SnapshotDate[];
+  files: SnapshotFile[];
+  total: number;
+  total_size_mb: number;
+  offset: number;
+  limit: number;
 }
 
 export interface SettingKey {

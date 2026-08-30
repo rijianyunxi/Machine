@@ -31,6 +31,39 @@ rules:
     - Person
   severity: 3
   enabled: true
+- id: 3
+  name: 值守离岗检测
+  description: ''
+  template: graph
+  models: []
+  params: {}
+  severity: 3
+  enabled: true
+  graph:
+    nodes:
+    - id: n1
+      type: class_present
+      params:
+        classes:
+        - person
+        min_confidence: 0.5
+    - id: n2
+      type: not
+      params: {}
+    - id: n3
+      type: duration
+      params:
+        seconds: 10
+    - id: n4
+      type: alert
+      params: {}
+    edges:
+    - from: n1
+      to: n2
+    - from: n2
+      to: n3
+    - from: n3
+      to: n4
 - id: 13
   name: smoking_no_fire_zone
   description: Smoking detected in no-fire zone
@@ -41,10 +74,10 @@ rules:
     trigger_classes:
     - cigarette
     - smoking
+    min_confidence: 0
     person_classes:
     - person
     overlap_margin: 0.2
-    min_confidence: 0.0
   severity: 4
   enabled: true
 - id: 14

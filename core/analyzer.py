@@ -6,6 +6,8 @@ primitive; the analyzer dispatches on that primitive, not the template name:
   presence         - trigger class detected (above min confidence) -> violation
   presence_near    - trigger object near/overlapping a person
   absence_required - person missing required PPE (or negative class hit)
+  graph            - visual canvas node graph stored on the rule itself
+                     (rule.graph, evaluated by core/rules_graph.py)
 
 Rule params (class sets, margins, ratios) come from config/rules.yaml, so
 panel edits take effect on the next frame. Class names are matched
@@ -17,8 +19,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from core.detector import Detection
+from core.rules_graph import evaluate_graph
 from rules.rules_engine import (
     LOGIC_ABSENCE_REQUIRED,
+    LOGIC_GRAPH,
     LOGIC_PRESENCE,
     LOGIC_PRESENCE_NEAR,
     LOGIC_ZONE_INTRUSION,
@@ -250,11 +254,31 @@ class ZoneIntrusionCheck:
         return False
 
 
+class GraphCheck:
+    """Logic: visual rule-canvas node graph stored on the rule (rule.graph).
+
+    Evaluation is delegated to core/rules_graph.py; missing/empty/invalid
+    (or cyclic) graphs never fire. See docs/RULE_GRAPH_DESIGN.md."""
+
+    def __call__(
+        self, camera_id: str, rule: RuleDefinition, detections: List[Detection],
+        timestamp: float, frame_size: Optional[tuple] = None,
+    ) -> Optional[Violation]:
+        graph = getattr(rule, "graph", None)
+        if not graph:
+            return None  # graph 缺失/为空：不告警
+        return evaluate_graph(
+            graph, detections, frame_size, timestamp, rule.id,
+            rule=rule, camera_id=camera_id,
+        )
+
+
 RULE_LOGICS = {
     LOGIC_PRESENCE: PresenceCheck(),
     LOGIC_PRESENCE_NEAR: PresenceNearCheck(),
     LOGIC_ABSENCE_REQUIRED: AbsenceRequiredCheck(),
     LOGIC_ZONE_INTRUSION: ZoneIntrusionCheck(),
+    LOGIC_GRAPH: GraphCheck(),
 }
 
 

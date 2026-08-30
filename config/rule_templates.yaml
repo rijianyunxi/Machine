@@ -8,6 +8,7 @@
 #   presence         检出即违规：画面出现触发类别就告警（如明火、打电话）
 #   presence_near    靠近人员才违规：触发类检出且与人员框重叠才告警（如吸烟）
 #   absence_required 装备缺失即违规：人员未被必需装备框覆盖，或检出违规类（如未戴安全帽）
+#   graph            可视化画布组合：判定逻辑由节点图定义（图存在规则的 graph 字段）
 #
 # 参数 type: classes(逗号分隔类别) / float / int；
 # from_model: true 表示该参数里的类别应存在于规则绑定的模型中（面板校验用）。
@@ -112,3 +113,10 @@ templates:
       max: 1.0
       desc: 触发检测的最低置信度（0 为不限制）
       from_model: false
+  # 可视化画布：判定逻辑由节点图定义，图本体存在规则条目的 graph 字段
+  # （节点注册表见 core/rules_graph.py，设计见 docs/RULE_GRAPH_DESIGN.md），
+  # 本模板仅作为画布规则的类型标记，故无参数。
+  graph:
+    label: 自定义组合（画布）
+    logic: graph
+    params: []

@@ -12,6 +12,9 @@ Rules are data, not code (manageable from the web panel):
     config/rules.yaml and the seed templates to config/rule_templates.yaml.
   - Both stores watch their YAML mtime, so edits (panel or manual) are picked
     up on the next frame without restart.
+  - The special template ``graph`` marks a visual canvas composition: the
+    node graph lives on the rule's ``graph`` field and is evaluated by
+    core/rules_graph.py (see docs/RULE_GRAPH_DESIGN.md).
 """
 
 import copy
@@ -35,6 +38,7 @@ LOGIC_PRESENCE = "presence"
 LOGIC_PRESENCE_NEAR = "presence_near"
 LOGIC_ABSENCE_REQUIRED = "absence_required"
 LOGIC_ZONE_INTRUSION = "zone_intrusion"
+LOGIC_GRAPH = "graph"  # 可视化画布：节点图存在规则条目的 graph 字段
 
 # 判定逻辑的中文显示名（面板下拉/徽章用），key 是内部标识。
 LOGIC_LABELS = {
@@ -42,6 +46,7 @@ LOGIC_LABELS = {
     LOGIC_PRESENCE_NEAR: "靠近人员才告警",
     LOGIC_ABSENCE_REQUIRED: "装备缺失检查",
     LOGIC_ZONE_INTRUSION: "区域侵入告警",
+    LOGIC_GRAPH: "画布自定义组合",
 }
 
 CHECK_LOGICS = {
@@ -49,6 +54,7 @@ CHECK_LOGICS = {
     LOGIC_PRESENCE_NEAR: "所选类别检出且贴着人员才告警（如烟头在人手上）",
     LOGIC_ABSENCE_REQUIRED: "人员没戴该戴的装备、或直接检出违规类就告警（如未戴安全帽）",
     LOGIC_ZONE_INTRUSION: "所选类别出现在画出的告警区域内才告警（如有人靠近门口、闯入围墙）",
+    LOGIC_GRAPH: "由可视化画布的节点图组合判定（图存在规则条目的 graph 字段）",
 }
 
 # Seed templates migrated to rule_templates.yaml on first run.
@@ -89,6 +95,12 @@ _SEED_TEMPLATES = {
              "max": 1.0, "desc": "触发检测的最低置信度（0 为不限制）",
              "from_model": False},
         ],
+    },
+    # 可视化画布组合：图本体存在规则条目的 graph 字段，模板无参数
+    LOGIC_GRAPH: {
+        "label": "自定义组合（画布）",
+        "logic": LOGIC_GRAPH,
+        "params": [],
     },
 }
 
@@ -278,6 +290,8 @@ class RuleDefinition:
     template: str = TEMPLATE_PRESENCE_NEAR_PERSON
     models: list = field(default_factory=list)  # bound model names (empty = all)
     params: dict = field(default_factory=dict)
+    # 可视化画布的节点图（template=graph 时使用），结构见 docs/RULE_GRAPH_DESIGN.md
+    graph: dict = field(default_factory=dict)
     severity: int = 2
     enabled: bool = True
 
@@ -381,6 +395,7 @@ class RulesStore:
                     template=template,
                     models=list(r.get("models", []) or []),
                     params=dict(r.get("params", {}) or {}),
+                    graph=dict(r.get("graph", {}) or {}),
                     severity=int(r.get("severity", 2)),
                     enabled=bool(r.get("enabled", True)),
                 )
@@ -388,22 +403,24 @@ class RulesStore:
         return rules
 
     def _save(self, rules: list[RuleDefinition]):
+        entries = []
+        for r in rules:
+            entry = {
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "template": r.template,
+                "models": list(r.models),
+                "params": dict(r.params),
+                "severity": r.severity,
+                "enabled": r.enabled,
+            }
+            # graph 仅画布规则写出；老规则不新增该键，存量条目保持原样
+            if r.graph:
+                entry["graph"] = r.graph
+            entries.append(entry)
         data = CommentedMap()
-        data["rules"] = self._to_yaml_list(
-            [
-                {
-                    "id": r.id,
-                    "name": r.name,
-                    "description": r.description,
-                    "template": r.template,
-                    "models": list(r.models),
-                    "params": dict(r.params),
-                    "severity": r.severity,
-                    "enabled": r.enabled,
-                }
-                for r in rules
-            ]
-        )
+        data["rules"] = self._to_yaml_list(entries)
         with self._lock:
             self._yaml.dump(data, self._path.open("w", encoding="utf-8"))
             self._mtime = -1.0  # force reload
@@ -469,7 +486,7 @@ class RulesStore:
                 self._templates.get_all():
             raise ValueError(f"未知模板类型: {fields['template']}")
         for key in ("name", "description", "template", "models", "params",
-                    "severity", "enabled"):
+                    "graph", "severity", "enabled"):
             if key in fields:
                 setattr(target, key, fields[key])
         self._save(rules)

@@ -1,5 +1,6 @@
 """Alerts (with false-positive marking) + snapshot gallery API."""
 
+import re
 import time
 from datetime import datetime
 
@@ -55,12 +56,25 @@ def set_alert_status(request: Request, alert_id: int, data: dict):
     return {"ok": True, "status": status}
 
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 @router.get("/api/snapshots")
-def snapshots(request: Request, date: str = Query(None), rule: str = Query(None),
-              camera: str = Query(None), limit: int = Query(200, ge=1, le=1000),
+def snapshots(request: Request, date: str = Query(None),
+              from_date: str = Query(None), to_date: str = Query(None),
+              rule: str = Query(None), camera: str = Query(None),
+              limit: int = Query(200, ge=1, le=1000),
               offset: int = Query(0, ge=0)):
-    return get_state(request).list_snapshots(date=date, rule=rule, camera=camera,
-                                             limit=limit, offset=offset)
+    for name, value in (("date", date), ("from_date", from_date),
+                        ("to_date", to_date)):
+        if value and not _DATE_RE.match(value):
+            raise HTTPException(400, f"{name} 格式需为 YYYY-MM-DD")
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(400, "from_date 不能晚于 to_date")
+    return get_state(request).list_snapshots(date=date, from_date=from_date,
+                                             to_date=to_date, rule=rule,
+                                             camera=camera, limit=limit,
+                                             offset=offset)
 
 
 @router.get("/api/snapshots/thumb")

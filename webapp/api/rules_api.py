@@ -23,6 +23,12 @@ def template_logics(request: Request):
     return {"logics": get_state(request).template_logics()}
 
 
+@router.get("/api/rules/node-types")
+def node_types(request: Request):
+    """可视化规则画布的节点注册表（前端画布编辑器自动生成交互用）。"""
+    return {"node_types": get_state(request).node_types()}
+
+
 @router.post("/api/rules/templates")
 def add_template(request: Request, data: dict):
     try:

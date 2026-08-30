@@ -214,6 +214,26 @@ class DatasetService:
             raise DatasetError("图片不存在")
         return p
 
+    def delete_images(self, name: str, filenames: list) -> int:
+        """Delete images and their label files; returns the removed count."""
+        if self._prelabel_job["running"]:
+            raise DatasetError("AI 预标注进行中，请稍后再管理图片")
+        imgs = self._images_dir(name)
+        labels = self._labels_dir(name)
+        n = 0
+        for fn in filenames:
+            if not SAFE_FILE.match(str(fn or "")):
+                continue
+            p = imgs / fn
+            if not p.exists() or p.suffix.lower() not in IMG_EXTS:
+                continue
+            p.unlink()
+            lp = labels / (p.stem + ".txt")
+            if lp.exists():
+                lp.unlink()
+            n += 1
+        return n
+
     # ---------- labels (YOLO txt) ----------
 
     def get_labels(self, name: str, stem: str) -> list:

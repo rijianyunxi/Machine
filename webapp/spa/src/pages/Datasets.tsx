@@ -5,7 +5,18 @@ import { Page } from "../layout/Page";
 import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
 import { useToast } from "../ui/Toast";
+import { useLightbox } from "../ui/Lightbox";
 import { Chip, Empty, useBusy } from "../ui/badges";
+
+interface ImgInfo {
+  file: string;
+  stem: string;
+  labeled: boolean;
+  boxes: number;
+}
+
+const imgUrl = (ds: string, file: string) =>
+  `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(file)}`;
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
@@ -16,9 +27,14 @@ export default function DatasetsPage() {
   const [snapDate, setSnapDate] = useState("");
   const [snapLimit, setSnapLimit] = useState("200");
   const [pre, setPre] = useState<Record<string, PrelabelStatus>>({});
+  const [mgr, setMgr] = useState<{ name: string; images: ImgInfo[] } | null>(
+    null,
+  );
+  const [sel, setSel] = useState<Set<string>>(new Set());
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const toast = useToast();
   const confirm = useConfirm();
+  const lightbox = useLightbox();
   const { busy, wrap } = useBusy();
 
   const refresh = useCallback(async () => {
@@ -130,6 +146,57 @@ export default function DatasetsPage() {
     }
   };
 
+  // ---- 图片管理弹窗 ----
+  const openMgr = async (name: string) => {
+    setMgr({ name, images: [] });
+    setSel(new Set());
+    try {
+      const r = await api<{ images: ImgInfo[] }>(
+        `/api/datasets/${encodeURIComponent(name)}/images?limit=1000`,
+      );
+      setMgr({ name, images: r.images });
+    } catch (e) {
+      toast((e as Error).message || "图片列表加载失败", false);
+      setMgr(null);
+    }
+  };
+
+  const toggleSel = (file: string) => {
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(file)) n.delete(file);
+      else n.add(file);
+      return n;
+    });
+  };
+
+  const delImages = async (files: string[]) => {
+    if (!mgr || !files.length) return;
+    if (
+      !(await confirm(
+        files.length === 1
+          ? `删除图片 ${files[0]}？其标注将一并删除，不可恢复！`
+          : `删除选中的 ${files.length} 张图片？标注将一并删除，不可恢复！`,
+      ))
+    )
+      return;
+    try {
+      const r = await api<{ deleted: number }>(
+        `/api/datasets/${encodeURIComponent(mgr.name)}/images`,
+        { method: "DELETE", body: { filenames: files } },
+      );
+      toast(`已删除 ${r.deleted} 张`);
+      const gone = new Set(files);
+      setSel((s) => new Set([...s].filter((f) => !gone.has(f))));
+      setMgr((m) =>
+        m ? { ...m, images: m.images.filter((i) => !gone.has(i.file)) } : m,
+      );
+      refresh();
+    } catch (e) {
+      toast((e as Error).message || "删除失败", false);
+    }
+  };
+
   return (
     <Page
       title="数据集"
@@ -144,8 +211,11 @@ export default function DatasetsPage() {
         ) : datasets.length ? (
           datasets.map((d) => (
             <div className="card" key={d.name}>
-              <div className="card-title" style={{ marginBottom: 8 }}>
-                <b style={{ fontSize: 14 }}>{d.name}</b>
+              <div className="ds-head">
+                <div className="ds-name">
+                  <b title={d.name}>{d.name}</b>
+                  <span className="muted">{d.images} 张图片</span>
+                </div>
                 {d.images ? (
                   <Chip
                     text={`${d.labeled}/${d.images} 已标`}
@@ -155,29 +225,21 @@ export default function DatasetsPage() {
                   <Chip text="空数据集" />
                 )}
               </div>
-              <div className="muted" style={{ marginBottom: 8 }}>
-                类别 {d.classes.length}：
-                {d.classes.length
-                  ? d.classes.map((c, i) => (
-                      <Chip key={i} text={`${i}:${c}`} color="blue" />
-                    ))
-                  : "—"}
-              </div>
-              <div className="muted mono" style={{ fontSize: 11 }}>
-                {d.images} 张图片
+              <div className="ds-classes">
+                <span className="lbl">类别 {d.classes.length}</span>
+                {d.classes.length ? (
+                  d.classes.map((c, i) => (
+                    <Chip key={i} text={`${i}:${c}`} color="blue" />
+                  ))
+                ) : (
+                  <span className="lbl">—</span>
+                )}
               </div>
               <div className="toolbar" style={{ marginTop: 12 }}>
-                <a
-                  className="btn mini"
-                  href={`/app/annotate?ds=${encodeURIComponent(d.name)}`}
-                  style={{ padding: "4.5px 11px", fontSize: 12, borderRadius: 7 }}
-                >
+                <a className="btn mini" href={`/app/annotate?ds=${encodeURIComponent(d.name)}`}>
                   打开标注
                 </a>
-                <label
-                  className="mini ghost"
-                  style={{ padding: "4.5px 11px", cursor: "pointer" }}
-                >
+                <label className="btn ghost mini">
                   导入图片
                   <input
                     ref={(el) => {
@@ -204,6 +266,13 @@ export default function DatasetsPage() {
                   {pre[d.name]?.running
                     ? `预标注 ${pre[d.name].done}/${pre[d.name].total}`
                     : "AI 预标注"}
+                </button>
+                <button
+                  className="mini ghost"
+                  disabled={!d.images}
+                  onClick={() => openMgr(d.name)}
+                >
+                  管理图片
                 </button>
                 <button className="mini danger" onClick={() => del(d.name)}>
                   删除
@@ -287,6 +356,116 @@ export default function DatasetsPage() {
             value={snapLimit}
             onChange={(e) => setSnapLimit(e.target.value)}
           />
+        </Modal>
+      )}
+
+      {mgr && (
+        <Modal
+          title={`管理图片 · ${mgr.name}`}
+          width={880}
+          onClose={() => setMgr(null)}
+          footer={
+            <>
+              <button className="ghost" onClick={() => setMgr(null)}>
+                关 闭
+              </button>
+              <button
+                className="danger"
+                disabled={!sel.size}
+                onClick={() => delImages([...sel])}
+              >
+                删除选中{sel.size ? `（${sel.size}）` : ""}
+              </button>
+            </>
+          }
+        >
+          <div className="img-mgr-bar">
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              {mgr.images.length
+                ? `共 ${mgr.images.length} 张 · 已标 ${
+                    mgr.images.filter((i) => i.labeled).length
+                  } · 已选 ${sel.size}`
+                : "加载中…"}
+            </span>
+            {mgr.images.length > 0 && (
+              <>
+                <button
+                  className="mini ghost"
+                  onClick={() => setSel(new Set(mgr.images.map((i) => i.file)))}
+                >
+                  全选
+                </button>
+                <button
+                  className="mini ghost"
+                  disabled={!sel.size}
+                  onClick={() => setSel(new Set())}
+                >
+                  清除选择
+                </button>
+              </>
+            )}
+          </div>
+          {mgr.images.length ? (
+            <div className="img-mgr-grid">
+              {mgr.images.map((im) => (
+                <figure
+                  key={im.file}
+                  className={"img-mgr" + (sel.has(im.file) ? " on" : "")}
+                >
+                  <input
+                    className="pick"
+                    type="checkbox"
+                    title="选择"
+                    checked={sel.has(im.file)}
+                    onChange={() => toggleSel(im.file)}
+                  />
+                  <img
+                    src={imgUrl(mgr.name, im.file)}
+                    alt={im.file}
+                    loading="lazy"
+                    onClick={() =>
+                      lightbox.showGallery(
+                        mgr.images.map((i) => ({
+                          src: imgUrl(mgr.name, i.file),
+                          title: `${mgr.name}/${i.file}`,
+                        })),
+                        mgr.images.findIndex((i) => i.file === im.file),
+                      )
+                    }
+                  />
+                  <figcaption className="meta">
+                    <span className="fname" title={im.file}>
+                      {im.file}
+                    </span>
+                    {im.labeled ? (
+                      <span className="chip green" style={{ padding: "1px 7px", fontSize: 10.5 }}>
+                        {im.boxes}框
+                      </span>
+                    ) : (
+                      <span className="chip plain" style={{ padding: "1px 7px", fontSize: 10.5 }}>
+                        未标
+                      </span>
+                    )}
+                    <button
+                      className="mini danger"
+                      style={{ padding: "1px 7px", fontSize: 11 }}
+                      title="删除此图"
+                      onClick={() => delImages([im.file])}
+                    >
+                      删
+                    </button>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <Empty>该数据集还没有图片，可用上方「导入图片 / 从快照导入」</Empty>
+          )}
+          {mgr.images.length >= 1000 && (
+            <p className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+              仅显示前 1000 张（按时间先后），如需清理更多请先删除后再进入。
+            </p>
+          )}
         </Modal>
       )}
     </Page>
