@@ -3,7 +3,7 @@
 用法（项目根目录）：
     .venv/bin/python tests/test_rules_graph.py
 
-覆盖：9 种节点语义（含 near_class）、契约 §2 离岗图完整时间序列、环/非法图防御、
+覆盖：10 种节点语义（含 near_class/class_covering）、契约 §2 离岗图完整时间序列、环/非法图防御、
 RulesStore graph 字段持久化（含老规则兼容）、NODE_TYPES 注册表、
 state.node_types() 委托与 API 端点。
 """
@@ -79,18 +79,19 @@ PERSON = {"classes": ["person"], "min_confidence": 0.5}
 def test_node_registry():
     assert set(NODE_TYPES) == {
         "class_present", "class_absent", "in_zone", "duration",
-        "not", "and", "or", "alert", "near_class"}, "注册表必须恰好是契约 §4 的 8 种节点"
+        "not", "and", "or", "alert", "near_class", "class_covering"}, "注册表 = 契约 8 种 + near_class + class_covering 共 10 种节点"
     labels = {"class_present": "类别在场", "class_absent": "类别离场",
               "in_zone": "在指定区域内", "duration": "持续N秒",
               "not": "非", "and": "且", "or": "或", "alert": "告警",
-              "near_class": "靠近参照类别"}
+              "near_class": "靠近参照类别", "class_covering": "装备覆盖检查"}
     categories = {"class_present": "目标", "class_absent": "目标",
                   "in_zone": "空间", "duration": "时间",
                   "not": "逻辑", "and": "逻辑", "or": "逻辑",
-                  "alert": "输出", "near_class": "空间"}
+                  "alert": "输出", "near_class": "空间",
+                  "class_covering": "目标"}
     inputs = {"class_present": 0, "class_absent": 0, "in_zone": 1,
               "duration": 1, "not": 1, "and": 2, "or": 2, "alert": 1,
-              "near_class": 1}
+              "near_class": 1, "class_covering": 0}
     for t, spec in NODE_TYPES.items():
         assert set(spec) == {"label", "category", "inputs", "outputs", "params"}, t
         assert spec["label"] == labels[t], t
@@ -220,14 +221,15 @@ def test_duration():
     assert frame(0.0, [person]) is None            # 计时开始 0s
     assert frame(1.0, [person]) is None            # 1s < 3s
     assert frame(2.0, [person]) is None            # 2s < 3s
-    v = frame(3.0, [person])                       # 3s 达标 -> 上升沿触发
+    v = frame(3.0, [person])                       # 3s 达标 -> 开始告警
     assert v is not None and v.timestamp == 3.0
     assert v.bbox == person.bbox                   # targets 原样透传
-    assert frame(4.0, [person]) is None            # 已为真，不再触发
+    v = frame(4.0, [person])
+    assert v is not None                           # 持续为真持续告警（冷却由 analyzer 节流）
     assert frame(5.0, []) is None                  # 中断 -> 清零
     assert frame(6.0, [person]) is None            # 重新计时
     assert frame(8.0, [person]) is None            # 2s（若未清零此处会误报）
-    v = frame(9.0, [person])                       # 重新计满 3s -> 再次触发
+    v = frame(9.0, [person])                       # 重新计满 3s -> 再次告警
     assert v is not None and v.timestamp == 9.0
 
     # seconds=0：立即为真
@@ -258,7 +260,7 @@ def test_not_and_or():
 
     v = frame(0.0, [cat])
     assert v is not None and v.bbox is None and v.confidence == 0.0
-    assert frame(1.0, [cat]) is None               # 持续为真不再触发
+    assert frame(1.0, [cat]) is not None           # 持续为真持续告警
     assert frame(2.0, [person, cat]) is None       # person 在场 -> not 为假
     # 直接校验 not 的 targets 清空（内部求值，信号级断言）
     sig = _eval_node("n2", node("n2", "not"),
@@ -296,10 +298,10 @@ def test_not_and_or():
 
 
 # ------------------------------------------------------------
-# 6. alert 上升沿只触发一次
+# 6. alert：输入为真即告警（持续违规由 analyzer 冷却节流）
 # ------------------------------------------------------------
 
-def test_alert_rising_edge_once():
+def test_alert_fires_while_true():
     _reset_state()
     person = det("person", 0.9, (10, 10, 50, 50))
     g = graph_of([node("n1", "class_present", PERSON), node("n2", "alert")],
@@ -308,13 +310,13 @@ def test_alert_rising_edge_once():
     def frame(t, dets, rid=1006):
         return evaluate_graph(g, dets, (1000, 1000), t, rid)
 
-    assert frame(0.0, [person]) is not None        # 首帧 true 视为上升沿
-    assert frame(1.0, [person]) is None            # 持续为真不重复触发
-    assert frame(2.0, [person]) is None
+    assert frame(0.0, [person]) is not None        # 为真即告警
+    assert frame(1.0, [person]) is not None        # 持续为真持续告警
+    assert frame(2.0, [person]) is not None
     assert frame(3.0, []) is None                  # 转为假
     assert frame(4.0, []) is None
-    assert frame(5.0, [person]) is not None        # 再次上升沿
-    assert frame(6.0, [person]) is None
+    assert frame(5.0, [person]) is not None        # 再次出现 -> 再告警
+    assert frame(6.0, [person]) is not None
 
 
 # ------------------------------------------------------------
@@ -341,8 +343,8 @@ def test_person_leave_post_full_graph():
         (10.0, [], False),        # 人离场，计时开始
         (15.0, [], False),        # 5s < 10s
         (19.0, [], False),        # 9s < 10s
-        (20.0, [], True),         # 连续离场 10s -> 告警
-        (21.0, [], False),        # 持续为真不重复
+        (20.0, [], True),         # 连续离场 10s -> 开始告警
+        (21.0, [], True),         # 持续离岗持续告警（冷却由 analyzer 节流）
         (25.0, [person], False),  # 人回岗，计时清零
         (26.0, [], False),        # 又离场，重新计时
         (35.0, [], False),        # 9s < 10s
@@ -606,7 +608,7 @@ TESTS = [
     ("in_zone", test_in_zone),
     ("duration", test_duration),
     ("not/and/or", test_not_and_or),
-    ("alert 上升沿", test_alert_rising_edge_once),
+    ("alert 持续告警", test_alert_fires_while_true),
     ("离岗图完整时间序列", test_person_leave_post_full_graph),
     ("环/非法图防御", test_cycles_and_invalid_graphs),
     ("RulesStore 持久化", test_rules_store_persistence),

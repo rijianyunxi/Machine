@@ -2,7 +2,7 @@ import type { RuleGraph } from "../api/types";
 
 /* 预设画廊（契约 docs/RULE_GRAPH_DESIGN.md §7）：
  * 8 个预置画布 + 1 个空白画布。
- * no_helmet 为契约允许的「近似实现」（简化版）；smoking 已用 near_class 节点实现真实判定。 */
+ * 全部预设均为真实判定；no_helmet 使用 class_covering（装备覆盖检查）节点表达。 */
 
 export interface GraphPreset {
   key: string;
@@ -146,14 +146,26 @@ export const GRAPH_PRESETS: GraphPreset[] = [
   },
   {
     key: "no_helmet",
-    title: "未戴安全帽（简化版）",
-    desc: "简化版：画面检出人员（person）即告警。v1 暂不支持「未戴帽子的人」组合判定，near/overlap 节点二期提供。",
+    title: "未戴安全帽",
+    desc: "人员在场且未戴安全帽（或检出无帽类）即告警。可调覆盖比例与一票否决类别。",
     graph: {
       nodes: [
-        { id: "n1", type: "class_present", params: { classes: ["person"], ...CONF } },
-        { id: "n2", type: "alert", params: {} },
+        { id: "n1", type: "class_present", params: { classes: ["person"], min_confidence: 0 } },
+        { id: "ng", type: "class_covering", params: { classes: ["hardhat"], ref_classes: ["person"], coverage_ratio: 0.5, min_confidence: 0 } },
+        { id: "nn", type: "not", params: {} },
+        { id: "nv", type: "class_present", params: { classes: ["no-hardhat"], min_confidence: 0 } },
+        { id: "no", type: "or", params: {} },
+        { id: "na", type: "and", params: {} },
+        { id: "al", type: "alert", params: {} },
       ],
-      edges: [{ from: "n1", to: "n2" }],
+      edges: [
+        { from: "ng", to: "nn" },
+        { from: "nn", to: "no" },
+        { from: "nv", to: "no" },
+        { from: "no", to: "na" },
+        { from: "n1", to: "na" },
+        { from: "na", to: "al" },
+      ],
     },
   },
 ];

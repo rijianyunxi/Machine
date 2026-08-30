@@ -41,6 +41,23 @@ NODE_TYPES: Dict[str, dict] = {
              "min": 0.0, "max": 1.0, "desc": "最低置信度"},
         ],
     },
+    "class_covering": {
+        "label": "装备覆盖检查",
+        "category": "目标",
+        "inputs": 0,
+        "outputs": 1,
+        "params": [
+            {"name": "classes", "type": "string[]", "default": [],
+             "desc": "装备类别（必填，如 hardhat）"},
+            {"name": "ref_classes", "type": "string[]", "default": ["person"],
+             "desc": "参照类别（必填，如 person；全员被覆盖才算通过）"},
+            {"name": "coverage_ratio", "type": "float", "default": 0.5,
+             "min": 0.0, "max": 1.0,
+             "desc": "覆盖比例（装备框与人员框相交面积 / 装备框面积）"},
+            {"name": "min_confidence", "type": "float", "default": 0.0,
+             "min": 0.0, "max": 1.0, "desc": "最低置信度（0 为不过滤）"},
+        ],
+    },
     "class_absent": {
         "label": "类别离场",
         "category": "目标",
@@ -118,13 +135,11 @@ NODE_TYPES: Dict[str, dict] = {
 
 # 跨帧记忆：(rule_id, node_id) -> duration 连续为真起点 / alert 上一帧输入状态
 _duration_since: Dict[tuple, float] = {}
-_alert_prev: Dict[tuple, bool] = {}
 
 
 def _reset_state():
     """清空全部跨帧记忆（测试辅助；运行态按 (rule_id, node_id) 保留）。"""
     _duration_since.clear()
-    _alert_prev.clear()
 
 
 # ============================================================
@@ -188,6 +203,36 @@ def _eval_class_presence(params: dict, detections: List[Detection],
         # 全部不在场 -> true；离场信号本身没有目标框
         return {"state": not hits, "targets": []}
     return {"state": bool(hits), "targets": hits}
+
+
+def _eval_class_covering(params: dict, detections: List[Detection]) -> dict:
+    """class_covering：参照目标在场且**全部**被装备框覆盖（按面积比）。
+    语义对齐 AbsenceRequiredCheck：任一参照目标缺装备即 state=false。"""
+    gear_classes = _lower_set(params.get("classes"))
+    ref_classes = _lower_set(params.get("ref_classes"))
+    ratio = params.get("coverage_ratio", 0.5)
+    ratio = 0.5 if ratio is None else max(0.0, min(1.0, float(ratio)))
+    min_conf = params.get("min_confidence", 0.0)
+    min_conf = 0.0 if min_conf is None else float(min_conf)
+    refs = [d for d in detections
+            if d.class_name.lower() in ref_classes and d.confidence >= min_conf]
+    if not refs:
+        return _false_signal()  # 参照不在场：不构成缺装备告警
+    gear = [d for d in detections
+            if d.class_name.lower() in gear_classes and d.confidence >= min_conf]
+    covered = all(any(_covers(ref.bbox, g.bbox, ratio) for g in gear)
+                  for ref in refs)
+    return {"state": covered, "targets": refs}
+
+
+def _covers(ref_bbox: tuple, gear_bbox: tuple, ratio: float) -> bool:
+    """装备框与参照框相交面积 ≥ ratio×装备框面积 → 覆盖成立。"""
+    rx1, ry1, rx2, ry2 = ref_bbox
+    gx1, gy1, gx2, gy2 = gear_bbox
+    ix = max(0.0, min(rx2, gx2) - max(rx1, gx1))
+    iy = max(0.0, min(ry2, gy2) - max(ry1, gy1))
+    gear_area = max((gx2 - gx1) * (gy2 - gy1), 1e-6)
+    return ix * iy / gear_area > ratio
 
 
 def _center_in_zones(bbox: tuple, zones: list, fw: float, fh: float) -> bool:
@@ -271,6 +316,8 @@ def _eval_node(node_id, node: dict, inputs: List[dict],
     if ntype in ("class_present", "class_absent"):
         return _eval_class_presence(params, detections,
                                     absent=(ntype == "class_absent"))
+    if ntype == "class_covering":
+        return _eval_class_covering(params, detections)
     if ntype == "in_zone":
         return _eval_in_zone(params, inputs[0], frame_size)
     if ntype == "near_class":
@@ -312,15 +359,14 @@ def _make_violation(rule_id: int, rule, timestamp: float,
 
 def _eval_alert(node_id, input_signal: dict, timestamp: float, rule_id: int,
                 rule, camera_id: str):
-    """alert：消耗信号不产生输出；输入上升沿（上帧假→本帧真）时产出 Violation。
+    """alert：消耗信号不产生输出；输入为真即产出 Violation。
 
+    持续违规时每帧都产出，由 analyzer 的冷却时间节流为每 cooldown 秒一条
+    ——与旧版固定判定的行为完全一致（持续违规会反复提醒直到处理）。
     bbox 取该信号 targets 中置信度最高者，targets 为空则 bbox=None。
     """
-    key = (rule_id, node_id)
     state = bool(input_signal.get("state"))
-    prev = _alert_prev.get(key, False)
-    _alert_prev[key] = state
-    if not (state and not prev):
+    if not state:
         return None
     targets = input_signal.get("targets") or []
     best = max(targets, key=lambda d: d.confidence) if targets else None
