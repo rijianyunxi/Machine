@@ -150,7 +150,7 @@ class RuntimeState:
     @property
     def db(self):
         if self._db is None:
-            from storage.db import AlertDatabase
+            from infrastructure.persistence import AlertDatabase
 
             self._db = AlertDatabase(self.settings())
         return self._db

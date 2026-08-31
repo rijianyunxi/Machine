@@ -32,6 +32,20 @@ class Detection:
     model_name: str = "default"  # which model produced this detection
 
 
+class DetectionError(RuntimeError):
+    """Raised when a configured detector cannot produce a valid result.
+
+    An inference failure is deliberately distinct from a successful inference
+    with zero detections.  Callers can catch this exception to mark the model
+    unhealthy instead of feeding an artificial empty result into absence rules.
+    """
+
+    def __init__(self, model_name: str, message: str, cause: Optional[BaseException] = None):
+        self.model_name = model_name
+        self.cause = cause
+        super().__init__(f"Detection failed for model [{model_name}]: {message}")
+
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -62,6 +76,8 @@ class Detector:
         self.iou = iou
         self.img_size = img_size
         self._model = None
+        self._last_error: Optional[DetectionError] = None
+        self._error_count = 0
         self._logger = get_logger(f"detector.{name}")
         self._load_model()
 
@@ -83,9 +99,17 @@ class Detector:
             raise
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
-        """Run detection on a frame."""
+        """Run detection on a frame.
+
+        A returned empty list means inference completed successfully and no
+        objects were found.  Model/runtime failures raise ``DetectionError``
+        so they cannot be mistaken for a real empty frame.
+        """
         if self._model is None:
-            return []
+            error = DetectionError(self.name, "model is not loaded")
+            self._last_error = error
+            self._error_count += 1
+            raise error
 
         try:
             results = self._model(
@@ -118,11 +142,17 @@ class Detector:
                                 model_name=self.name,
                             )
                         )
+            self._last_error = None
             return detections
 
+        except DetectionError:
+            raise
         except Exception as e:
-            self._logger.error(f"Detection error [{self.name}]: {e}")
-            return []
+            error = DetectionError(self.name, str(e), cause=e)
+            self._last_error = error
+            self._error_count += 1
+            self._logger.error(f"Detection error [{self.name}]: {e}", exc_info=True)
+            raise error from e
 
     def get_status(self) -> dict:
         return {
@@ -133,7 +163,20 @@ class Detector:
             "iou": self.iou,
             "img_size": self.img_size,
             "classes": dict(self._model.names) if self._model else {},
+            "healthy": self._model is not None and self._last_error is None,
+            "last_error": str(self._last_error) if self._last_error else None,
+            "error_count": self._error_count,
         }
+
+    @property
+    def last_error(self) -> Optional[DetectionError]:
+        """Most recent inference error, or ``None`` after a successful run."""
+        return self._last_error
+
+    @property
+    def error_count(self) -> int:
+        """Number of inference failures since this detector was created."""
+        return self._error_count
 
     @property
     def class_names(self) -> dict:
@@ -301,11 +344,32 @@ class MultiDetector:
             if model_names is None:
                 detectors = list(self._detectors.values())
             else:
-                detectors = [
-                    self._detectors[n] for n in model_names if n in self._detectors
-                ]
+                requested = list(dict.fromkeys(model_names))
+                missing = [name for name in requested if name not in self._detectors]
+                if missing:
+                    message = (
+                        "requested model(s) are not loaded: "
+                        f"{', '.join(missing)}"
+                    )
+                    error = DetectionError(",".join(missing), message)
+                    self._logger.error(message)
+                    raise error
+                detectors = [self._detectors[name] for name in requested]
+
         for detector in detectors:
-            all_detections.extend(detector.detect(frame))
+            try:
+                all_detections.extend(detector.detect(frame))
+            except DetectionError:
+                # Do not continue with the other models: a partial result can
+                # make absence/PPE rules semantically unsafe for this frame.
+                raise
+            except Exception as e:
+                # Keep the aggregate API explicit even if a custom detector
+                # implementation violates the Detector contract.
+                name = getattr(detector, "name", "unknown")
+                error = DetectionError(name, str(e), cause=e)
+                self._logger.error(f"Detection error [{name}]: {e}", exc_info=True)
+                raise error from e
         return all_detections
 
     def models_providing(self, class_names) -> List[str]:

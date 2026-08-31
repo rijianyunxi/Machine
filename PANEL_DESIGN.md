@@ -366,7 +366,11 @@ def analyze_frame(...):
 metch-yolo/
 ├── config/
 │   └── rules.yaml            # 新：规则实例持久化（§5.2）
-├── storage/
+├── infrastructure/
+│   └── persistence/
+│       └── alert_database.py # SQLite 告警持久化适配器
+├── storage/                  # 仅存运行数据，不包含 Python 代码
+│   ├── alerts.db             # SQLite 告警数据
 │   ├── snapshots/            # 现有：YYYY-MM-DD/规则名/*.jpg（保留策略按天清理）
 │   └── test_results/         # 新：测试台结果图（保留 50 张）
 ├── webapp/

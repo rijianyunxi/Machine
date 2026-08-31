@@ -29,7 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.analyzer import BehaviorAnalyzer
 from core.capture import CameraManager, CameraConfig
-from core.detector import MultiDetector
+from core.detector import DetectionError, MultiDetector
 from core.snapshot import SnapshotManager
 from rules.rules_engine import get_all_rules, get_rules_store
 from infrastructure.persistence import AlertDatabase
@@ -222,9 +222,17 @@ class MachineVisionSystem:
                     models_needed.update(
                         self._detector.models_providing(person_classes)
                     )
-                detections = self._detector.detect_all(
-                    frame_data.frame, model_names=sorted(models_needed) or None
-                )
+                try:
+                    detections = self._detector.detect_all(
+                        frame_data.frame, model_names=sorted(models_needed) or None
+                    )
+                except DetectionError as exc:
+                    # A failed inference is not an empty detection result:
+                    # skip this frame so absence rules cannot raise false alerts.
+                    self._logger.error(
+                        f"Detection unavailable for camera {cam_id}: {exc}"
+                    )
+                    continue
 
                 # Analyze for violations
                 h, w = frame_data.frame.shape[:2]

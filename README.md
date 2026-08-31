@@ -95,7 +95,8 @@ config/           正式配置（settings.yaml / cameras.yaml / rules.yaml / rul
 config_test/      本地开发测试配置（真实监控停用）
 core/             取流 / 检测 / 分析 / 快照
 rules/            规则引擎（判定逻辑 + 模板/规则存储）
-storage/          alerts.db / snapshots/ / test_results/
+infrastructure/   外部系统适配层（数据库等持久化实现）
+storage/          仅存运行数据：alerts.db / snapshots/ / test_results/
 webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist，已入库）
 scripts/          测试视频生成 / 监控连通性测试 / 训练脚本
 ```

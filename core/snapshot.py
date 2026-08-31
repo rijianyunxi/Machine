@@ -5,8 +5,9 @@ When a violation is detected, saves the current frame as a JPEG image
 with bounding boxes and violation labels annotated on it.
 """
 
-import os
+import re
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 import cv2
@@ -41,13 +42,40 @@ class SnapshotManager:
 
         snap_cfg = settings.get("snapshot", {})
         self._save_dir = snap_cfg.get("save_dir", "storage/snapshots")
+        self._save_root = Path(self._save_dir).expanduser().resolve()
         self._jpeg_quality = snap_cfg.get("jpeg_quality", 90)
         self._annotate = snap_cfg.get("annotate", True)
         self._box_thickness = snap_cfg.get("box_thickness", 2)
         self._font_scale = snap_cfg.get("font_scale", 0.6)
 
-        # Ensure base save directory exists
-        os.makedirs(self._save_dir, exist_ok=True)
+        # Ensure base save directory exists.  All later paths are resolved
+        # against this root and checked before a directory or file is created.
+        self._save_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _safe_component(value: object, fallback: str) -> str:
+        """Return a single filesystem-safe path component.
+
+        Rule names and camera IDs are configuration/runtime data, not trusted
+        path components.  Replacing separators (including Windows separators)
+        also prevents values such as ``../../outside`` from changing the
+        snapshot root.
+        """
+        component = str(value or "").strip()
+        component = component.replace("/", "_").replace("\\", "_")
+        component = re.sub(r"[\x00-\x1f\x7f]", "_", component)
+        component = re.sub(r"[^\w .-]", "_", component, flags=re.UNICODE)
+        component = component.strip(" .")
+        return component if component and component not in {".", ".."} else fallback
+
+    def _assert_in_save_dir(self, path: Path) -> None:
+        """Reject paths that resolve outside the configured save directory."""
+        try:
+            path.resolve().relative_to(self._save_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"snapshot path escapes save_dir: {path}"
+            ) from exc
 
     def save_snapshot(
         self,
@@ -67,20 +95,29 @@ class SnapshotManager:
             File path of saved snapshot, or None on error.
         """
         try:
-            # Create date-based subdirectory
+            # Create date-based subdirectory.  Use the resolved root so the
+            # containment check has one stable reference even when save_dir is
+            # configured as a relative path.
             date_str = datetime.fromtimestamp(violation.timestamp).strftime("%Y-%m-%d")
-            day_dir = os.path.join(self._save_dir, date_str)
+            day_dir = self._save_root / date_str
 
-            # Create type-based subdirectory: date / rule_type
-            rule_dir = os.path.join(day_dir, violation.rule_name)
-            os.makedirs(rule_dir, exist_ok=True)
+            # Rule names are display data and must never be used as raw paths.
+            safe_rule_name = self._safe_component(violation.rule_name, "rule")
+            rule_dir = day_dir / safe_rule_name
 
-            # Generate filename
+            # Camera IDs become part of a filename, so sanitize them as well.
+            safe_camera_id = self._safe_component(violation.camera_id, "camera")
             time_str = datetime.fromtimestamp(violation.timestamp).strftime(
                 "%H%M%S_%f"
             )[:12]
-            filename = f"{violation.camera_id}_R{violation.rule_id:02d}_{time_str}.jpg"
-            filepath = os.path.join(rule_dir, filename)
+            filename = f"{safe_camera_id}_R{violation.rule_id:02d}_{time_str}.jpg"
+            filepath = rule_dir / filename
+
+            # Resolve before mkdir/imwrite.  This also rejects pre-existing
+            # symlinks under save_dir that point outside the configured root.
+            self._assert_in_save_dir(rule_dir)
+            self._assert_in_save_dir(filepath)
+            rule_dir.mkdir(parents=True, exist_ok=True)
 
             # Prepare annotated frame
             output_frame = frame.copy()
@@ -92,14 +129,14 @@ class SnapshotManager:
 
             # Save as JPEG
             quality = [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
-            success = cv2.imwrite(filepath, output_frame, quality)
+            success = cv2.imwrite(str(filepath), output_frame, quality)
 
             if success:
                 self._logger.info(
                     f"Snapshot saved: {filepath} "
                     f"[{violation.rule_name}, conf={violation.confidence:.2f}]"
                 )
-                return filepath
+                return str(filepath)
             else:
                 self._logger.error(f"Failed to save snapshot: {filepath}")
                 return None

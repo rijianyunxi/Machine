@@ -150,8 +150,8 @@
 | 相对路径依赖 cwd | `main.py:50` 等 | `--config` 默认 `config`，settings 里 `models/`、`logs/`、`storage/` 全是相对路径，从别的目录启动会找不到文件。建议统一相对 `PROJECT_ROOT` 解析 |
 | 无 README / 测试 / pyproject | 项目根目录 | 换人接手或部署没有文档；`scripts/test_camera.py` 可作为冒烟工具写进 README |
 | `time.sleep(3)` 魔法数 | `main.py:145` | 等相机连接改为「等待首帧或超时」 |
-| 告警日志重复 | `main.py:216` + `storage/db.py:145` | insert_alert 成功后 main 里又 log 一遍 warning |
-| DB 每次插入新建连接 | `storage/db.py:40-48` | 告警量大时可复用长连接（`check_same_thread=False`） |
+| 告警日志重复 | `main.py:216` + `infrastructure/persistence/alert_database.py:145` | insert_alert 成功后 main 里又 log 一遍 warning |
+| DB 每次插入新建连接 | `infrastructure/persistence/alert_database.py:40-48` | 告警量大时可复用长连接（`check_same_thread=False`） |
 
 ---
 

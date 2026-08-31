@@ -203,99 +203,220 @@ export default function DatasetsPage() {
     }
   };
 
+  const totals = (datasets ?? []).reduce(
+    (acc, dataset) => ({
+      images: acc.images + dataset.images,
+      labeled: acc.labeled + dataset.labeled,
+    }),
+    { images: 0, labeled: 0 },
+  );
+  const overallProgress = totals.images
+    ? Math.round((totals.labeled / totals.images) * 100)
+    : 0;
+
   return (
     <Page
       title="数据集"
-      subtitle="YOLO 格式数据集：新建 / 导入图片 / 从快照导入 / AI 批量预标注"
+      subtitle="管理训练图片、类别与标注进度，支持快照导入和 AI 批量预标注"
       actions={
-        <button onClick={() => setCreateOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Icon name="plus" size={13} /> 新建数据集
+        <button onClick={() => setCreateOpen(true)}>
+          <Icon name="plus" size={14} /> 新建数据集
         </button>
       }
     >
-      <div className="grid cards">
+      {datasets !== null && datasets.length > 0 && (
+        <section className="datasets-overview" aria-label="数据集概览">
+          <div className="datasets-overview__item">
+            <span className="datasets-overview__icon">
+              <Icon name="database" size={18} />
+            </span>
+            <span>
+              <small>数据集</small>
+              <strong>{datasets.length}</strong>
+            </span>
+          </div>
+          <div className="datasets-overview__item">
+            <span className="datasets-overview__icon">
+              <Icon name="images" size={18} />
+            </span>
+            <span>
+              <small>图片总数</small>
+              <strong>{totals.images}</strong>
+            </span>
+          </div>
+          <div className="datasets-overview__item datasets-overview__item--progress">
+            <span className="datasets-overview__icon datasets-overview__icon--green">
+              <Icon name="check-square" size={18} />
+            </span>
+            <span>
+              <small>总体标注进度</small>
+              <strong>{overallProgress}%</strong>
+              <em>{totals.labeled}/{totals.images} 张已标注</em>
+            </span>
+          </div>
+        </section>
+      )}
+
+      <section className="datasets-grid" aria-label="数据集列表">
         {datasets === null ? (
-          <div className="card" style={{ gridColumn: "1/-1" }}>
+          <div className="card datasets-state">
             <Empty>加载中…</Empty>
           </div>
         ) : datasets.length ? (
-          datasets.map((d) => (
-            <div className="card" key={d.name}>
-              <div className="ds-head">
-                <div className="ds-name">
-                  <b title={d.name}>{d.name}</b>
-                  <span className="muted">{d.images} 张图片</span>
+          datasets.map((d, datasetIndex) => {
+            const progress = d.images
+              ? Math.round((d.labeled / d.images) * 100)
+              : 0;
+            const visibleClasses = d.classes.slice(0, 4);
+            const hiddenClassCount = d.classes.length - visibleClasses.length;
+            const prelabelStatus = pre[d.name];
+
+            return (
+              <article
+                className="dataset-card"
+                key={d.name}
+                aria-labelledby={`dataset-title-${datasetIndex}`}
+              >
+                <header className="dataset-card__header">
+                  <div className="dataset-card__identity">
+                    <span className="dataset-card__icon">
+                      <Icon name="database" size={19} />
+                    </span>
+                    <div>
+                      <h2 id={`dataset-title-${datasetIndex}`} title={d.name}>
+                        {d.name}
+                      </h2>
+                      <p>{d.images} 张图片 · {d.classes.length} 个类别</p>
+                    </div>
+                  </div>
+                  {d.images ? (
+                    <Chip
+                      text={d.labeled === d.images ? "标注完成" : "标注中"}
+                      color={d.labeled === d.images ? "green" : "yellow"}
+                    />
+                  ) : (
+                    <Chip text="空数据集" />
+                  )}
+                </header>
+
+                <div className="dataset-card__progress">
+                  <div className="dataset-card__progress-label">
+                    <span>标注进度</span>
+                    <strong>{d.labeled}/{d.images || 0} · {progress}%</strong>
+                  </div>
+                  <div
+                    className="dataset-progress"
+                    role="progressbar"
+                    aria-label={`${d.name} 标注进度`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progress}
+                  >
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
                 </div>
-                {d.images ? (
-                  <Chip
-                    text={`${d.labeled}/${d.images} 已标`}
-                    color={d.labeled === d.images ? "green" : "yellow"}
-                  />
-                ) : (
-                  <Chip text="空数据集" />
-                )}
-              </div>
-              <div className="ds-classes">
-                <span className="lbl">类别 {d.classes.length}</span>
-                {d.classes.length ? (
-                  d.classes.map((c, i) => (
-                    <Chip key={i} text={`${i}:${c}`} color="blue" />
-                  ))
-                ) : (
-                  <span className="lbl">—</span>
-                )}
-              </div>
-              <div className="toolbar" style={{ marginTop: 12 }}>
-                <a className="btn mini" href={`/app/annotate?ds=${encodeURIComponent(d.name)}`}>
-                  打开标注
-                </a>
-                <label className="btn ghost mini">
-                  导入图片
-                  <input
-                    ref={(el) => {
-                      fileRefs.current[d.name] = el;
-                    }}
-                    type="file"
-                    multiple
-                    accept=".jpg,.jpeg,.png,.webp"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      uploadImages(d.name, e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <button className="mini ghost" onClick={() => setSnapTarget(d.name)}>
-                  从快照导入
-                </button>
-                <button
-                  className="mini ghost"
-                  disabled={busyPl || !!pre[d.name]?.running}
-                  onClick={() => prelabel(d.name)}
-                >
-                  {pre[d.name]?.running
-                    ? `预标注 ${pre[d.name].done}/${pre[d.name].total}`
-                    : "AI 预标注"}
-                </button>
-                <button
-                  className="mini ghost"
-                  disabled={!d.images}
-                  onClick={() => openMgr(d.name)}
-                >
-                  管理图片
-                </button>
-                <button className="mini danger" onClick={() => del(d.name)}>
-                  删除
-                </button>
-              </div>
-            </div>
-          ))
+
+                <div className="dataset-card__classes">
+                  <div className="dataset-card__section-title">
+                    <span>类别</span>
+                    <small>{d.classes.length}</small>
+                  </div>
+                  <div className="dataset-card__class-list">
+                    {visibleClasses.length ? (
+                      <>
+                        {visibleClasses.map((className, classIndex) => (
+                          <Chip
+                            key={`${classIndex}-${className}`}
+                            text={`${classIndex}:${className}`}
+                            color="blue"
+                          />
+                        ))}
+                        {hiddenClassCount > 0 && (
+                          <span className="dataset-card__class-more">
+                            +{hiddenClassCount}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="dataset-card__class-empty">尚未设置类别</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="dataset-card__actions">
+                  <div className="dataset-card__primary-actions">
+                    <a
+                      className="btn dataset-action dataset-action--primary"
+                      href={`/app/annotate?ds=${encodeURIComponent(d.name)}`}
+                    >
+                      <Icon name="edit" size={14} /> 打开标注
+                    </a>
+                    <button
+                      className="ghost dataset-action dataset-action--secondary"
+                      onClick={() => fileRefs.current[d.name]?.click()}
+                    >
+                      <Icon name="upload" size={14} /> 导入图片
+                    </button>
+                    <input
+                      ref={(el) => {
+                        fileRefs.current[d.name] = el;
+                      }}
+                      className="dataset-card__file-input"
+                      type="file"
+                      multiple
+                      accept=".jpg,.jpeg,.png,.webp"
+                      aria-label={`向 ${d.name} 导入图片`}
+                      onChange={(e) => {
+                        uploadImages(d.name, e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                  <div className="dataset-card__secondary-actions">
+                    <button
+                      className="ghost dataset-action dataset-action--quiet"
+                      onClick={() => setSnapTarget(d.name)}
+                    >
+                      <Icon name="camera" size={13} /> 从快照导入
+                    </button>
+                    <button
+                      className={`ghost dataset-action dataset-action--quiet${
+                        prelabelStatus?.running ? " is-running" : ""
+                      }`}
+                      disabled={busyPl || !!prelabelStatus?.running}
+                      onClick={() => prelabel(d.name)}
+                    >
+                      <Icon name="sparkles" size={13} />
+                      {prelabelStatus?.running
+                        ? prelabelStatus.total
+                          ? `预标注 ${prelabelStatus.done}/${prelabelStatus.total}`
+                          : "正在启动…"
+                        : "AI 预标注"}
+                    </button>
+                    <button
+                      className="ghost dataset-action dataset-action--quiet"
+                      disabled={!d.images}
+                      onClick={() => openMgr(d.name)}
+                    >
+                      <Icon name="folder" size={13} /> 管理图片
+                    </button>
+                    <button
+                      className="danger dataset-action dataset-action--danger"
+                      onClick={() => del(d.name)}
+                    >
+                      <Icon name="trash" size={13} /> 删除
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })
         ) : (
-          <div className="card" style={{ gridColumn: "1/-1" }}>
+          <div className="card datasets-state">
             <Empty>还没有数据集，点右上角「新建数据集」开始</Empty>
           </div>
         )}
-      </div>
+      </section>
 
       {createOpen && (
         <Modal

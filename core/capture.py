@@ -29,6 +29,11 @@ _NETWORK_PREFIXES = (
     "rtsp://", "rtsps://", "rtmp://", "http://", "https://", "udp://", "tcp://",
 )
 
+# ``dup2`` changes the process-wide file descriptor.  Capture threads must not
+# enter this context concurrently or one thread can restore another thread's
+# saved descriptor and leave stderr redirected to ``/dev/null`` permanently.
+_FFMPEG_STDERR_LOCK = threading.RLock()
+
 
 @contextmanager
 def _suppress_ffmpeg_stderr():
@@ -40,21 +45,29 @@ def _suppress_ffmpeg_stderr():
     h264/RTSP noise still reaches the console. Here we ``dup2`` the real
     file descriptor, so C-level messages are discarded too.
     """
-    try:
-        fd = sys.stderr.fileno()
-    except (AttributeError, OSError, ValueError):
-        yield
-        return
+    with _FFMPEG_STDERR_LOCK:
+        try:
+            fd = sys.stderr.fileno()
+        except (AttributeError, OSError, ValueError):
+            yield
+            return
 
-    saved_fd = os.dup(fd)
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    try:
-        os.dup2(devnull_fd, fd)
-        yield
-    finally:
-        os.dup2(saved_fd, fd)
-        os.close(devnull_fd)
-        os.close(saved_fd)
+        saved_fd = os.dup(fd)
+        try:
+            devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        except Exception:
+            os.close(saved_fd)
+            raise
+
+        try:
+            os.dup2(devnull_fd, fd)
+            yield
+        finally:
+            try:
+                os.dup2(saved_fd, fd)
+            finally:
+                os.close(devnull_fd)
+                os.close(saved_fd)
 
 
 @dataclass
@@ -104,6 +117,8 @@ class CameraStream:
         self._cap: Optional[cv2.VideoCapture] = None
         self._thread: Optional[threading.Thread] = None
         self._running = False
+        self._stop_event = threading.Event()
+        self._lifecycle_lock = threading.Lock()
         self._lock = threading.Lock()
 
         self._latest_frame: Optional[np.ndarray] = None
@@ -153,24 +168,49 @@ class CameraStream:
 
     def start(self):
         """Start the capture thread."""
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(
-            target=self._capture_loop,
-            name=f"cam-{self.config.id}",
-            daemon=True,
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            # A timed-out stop may leave the old thread blocked inside an
+            # OpenCV call.  Never start a second thread while it is alive.
+            if self._thread is not None and self._thread.is_alive():
+                self._logger.warning(
+                    "Capture thread is still stopping; refusing to start a second thread"
+                )
+                return
+            if self._running:
+                return
+
+            self._stop_event.clear()
+            self._running = True
+            self._thread = threading.Thread(
+                target=self._capture_loop,
+                name=f"cam-{self.config.id}",
+                daemon=True,
+            )
+            self._thread.start()
         self._logger.info(
             f"Capture thread started: {self.config.name} ({self.config.rtsp_url})"
         )
 
     def stop(self):
         """Stop the capture thread and release resources."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=5.0)
+        with self._lifecycle_lock:
+            self._running = False
+            self._stop_event.set()
+            thread = self._thread
+
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=5.0)
+
+        if thread and thread.is_alive():
+            # The read/open call is owned by the capture thread.  Releasing the
+            # VideoCapture from here can race with that native call, so leave
+            # cleanup to the thread's finally block and keep start() blocked.
+            self._logger.warning(
+                "Capture thread did not stop within 5 seconds; restart is deferred "
+                "until the thread exits"
+            )
+            return
+
         self._release_capture()
         self._logger.info(f"Capture thread stopped: {self.config.id}")
 
@@ -194,21 +234,52 @@ class CameraStream:
     def _connect(self) -> bool:
         """Attempt to connect to the RTSP stream."""
         self._release_capture()
+        cap = None
 
         try:
             self._logger.info(f"Connecting to {self.config.rtsp_url}...")
-            with _suppress_ffmpeg_stderr():
-                self._cap = cv2.VideoCapture(self.config.rtsp_url, cv2.CAP_FFMPEG)
+            timeout_ms = max(1, int(self.read_timeout * 1000))
+            open_params = []
+            open_timeout_prop = getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", None)
+            read_timeout_prop = getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", None)
+            if open_timeout_prop is not None:
+                open_params.extend([open_timeout_prop, timeout_ms])
+            if read_timeout_prop is not None:
+                open_params.extend([read_timeout_prop, timeout_ms])
 
-                # Keep only the latest frame instead of buffering the whole GOP.
-                self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                # Apply connect/read timeouts so a stalled stream cannot block forever.
-                self._cap.set(
-                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, int(self.read_timeout * 1000)
-                )
-                self._cap.set(
-                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, int(self.read_timeout * 1000)
-                )
+            # Use the params overload so OPEN_TIMEOUT is supplied before the
+            # backend starts opening the URL.  Setting it after construction is
+            # too late for FFmpeg and cannot bound the open/handshake phase.
+            cap = cv2.VideoCapture()
+            with _suppress_ffmpeg_stderr():
+                try:
+                    cap.open(self.config.rtsp_url, cv2.CAP_FFMPEG, open_params)
+                except (TypeError, cv2.error) as exc:
+                    # Older OpenCV Python bindings/backends may not expose the
+                    # params overload.  Fall back without pretending the open
+                    # timeout was applied, then report unsupported properties.
+                    self._logger.warning(
+                        f"Open timeout parameters are not supported by this OpenCV "
+                        f"binding/backend; falling back to plain open: {exc}"
+                    )
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    cap = cv2.VideoCapture()
+                    cap.open(self.config.rtsp_url, cv2.CAP_FFMPEG)
+
+            self._cap = cap
+
+            # Keep only the latest frame instead of buffering the whole GOP.
+            self._set_capture_property(
+                cv2.CAP_PROP_BUFFERSIZE, 1, "frame buffer size"
+            )
+            # READ_TIMEOUT can also be applied after opening on backends that
+            # implement it as a mutable property. OPEN_TIMEOUT is intentionally
+            # not set here because it only has meaning during open().
+            if read_timeout_prop is not None:
+                self._set_capture_property(read_timeout_prop, timeout_ms, "read timeout")
 
             if self._cap.isOpened():
                 self._source_fps = self._cap.get(cv2.CAP_PROP_FPS)
@@ -226,13 +297,35 @@ class CameraStream:
                 return True
             else:
                 self._logger.warning("Failed to open stream")
+                self._release_capture()
                 self._is_connected = False
                 return False
 
         except Exception as e:
             self._logger.error(f"Connection error: {e}")
+            if self._cap is not None:
+                self._release_capture()
+            elif cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
             self._is_connected = False
             return False
+
+    def _set_capture_property(self, prop: int, value: float, label: str) -> bool:
+        """Set a backend property and report when the backend rejects it."""
+        cap = self._cap
+        if cap is None:
+            return False
+        try:
+            supported = cap.set(prop, value)
+        except Exception as exc:
+            self._logger.warning(f"Unable to set {label}: {exc}")
+            return False
+        if not supported:
+            self._logger.warning(f"Capture backend does not support {label}")
+        return bool(supported)
 
     def _release_capture(self):
         """Release the underlying VideoCapture object."""
@@ -265,90 +358,107 @@ class CameraStream:
         last_sample_time = 0.0
         frames_since_connect = 0
 
-        while self._running:
+        try:
+            while not self._stop_event.is_set():
             # Reconnect if needed
-            if self._cap is None or not self._cap.isOpened():
-                self._logger.info("Reconnecting...")
-                if not self._connect():
-                    time.sleep(self.reconnect_delay)
-                    continue
-                frames_since_connect = 0
+                if self._cap is None or not self._cap.isOpened():
+                    self._logger.info("Reconnecting...")
+                    if not self._connect():
+                        if self._stop_event.wait(self.reconnect_delay):
+                            break
+                        continue
+                    frames_since_connect = 0
 
-            # Local files: only read when it is time to sample.
-            if not self._is_network:
+                # Local files: only read when it is time to sample.
+                if not self._is_network:
+                    now = time.time()
+                    remaining = sample_interval - (now - last_sample_time)
+                    if remaining > 0:
+                        if self._stop_event.wait(min(0.01, remaining)):
+                            break
+                        continue
+
+                # Read a frame (ffmpeg decode warnings go to stderr; suppress them)
+                try:
+                    read_start = time.time()
+                    with _suppress_ffmpeg_stderr():
+                        success, frame = self._cap.read()
+                    read_elapsed = time.time() - read_start
+                except Exception as e:
+                    self._logger.error(f"Frame read error: {e}")
+                    success, frame = False, None
+                    read_elapsed = 0.0
+
+                # Do not process or publish another frame after stop was
+                # requested; cleanup is performed by the finally block below.
+                if self._stop_event.is_set():
+                    break
+
                 now = time.time()
-                if now - last_sample_time < sample_interval:
-                    time.sleep(0.01)  # small sleep to avoid busy waiting
-                    continue
 
-            # Read a frame (ffmpeg decode warnings go to stderr; suppress them)
-            try:
-                read_start = time.time()
-                with _suppress_ffmpeg_stderr():
-                    success, frame = self._cap.read()
-                read_elapsed = time.time() - read_start
-            except Exception as e:
-                self._logger.error(f"Frame read error: {e}")
-                success, frame = False, None
-                read_elapsed = 0.0
+                if success and frame is not None:
+                    self._consecutive_failures = 0
+                    self._is_connected = True
+                    self._last_success_time = now
+                    last_sample_time = now
 
-            now = time.time()
+                    # After (re)connect the decoder may start mid-GOP on a P-frame;
+                    # discard the first few frames until it syncs to a keyframe.
+                    frames_since_connect += 1
+                    if frames_since_connect <= self.warmup_frames:
+                        continue
 
-            if success and frame is not None:
-                self._consecutive_failures = 0
-                self._is_connected = True
-                self._last_success_time = now
-                last_sample_time = now
+                    with self._lock:
+                        self._latest_frame = frame
+                        self._latest_timestamp = now
+                        self._frame_index += 1
+                        self._frames_captured += 1
 
-                # After (re)connect the decoder may start mid-GOP on a P-frame;
-                # discard the first few frames until it syncs to a keyframe.
-                frames_since_connect += 1
-                if frames_since_connect <= self.warmup_frames:
-                    continue
+                else:
+                    self._consecutive_failures += 1
 
-                with self._lock:
-                    self._latest_frame = frame
-                    self._latest_timestamp = now
-                    self._frame_index += 1
-                    self._frames_captured += 1
+                    # A single read that burned the whole timeout means the socket is
+                    # dead; tear down immediately instead of waiting for 30 failures.
+                    if read_elapsed >= self.read_timeout - 0.5:
+                        self._logger.warning(
+                            f"Read timed out after {read_elapsed:.1f}s, reconnecting..."
+                        )
+                        self._release_capture()
+                        if self._stop_event.wait(self.reconnect_delay):
+                            break
+                        continue
 
-            else:
-                self._consecutive_failures += 1
+                    if self._consecutive_failures >= self.max_failures:
+                        self._logger.warning(
+                            f"Too many consecutive failures ({self._consecutive_failures}), "
+                            f"reconnecting..."
+                        )
+                        self._release_capture()
+                        if self._stop_event.wait(self.reconnect_delay):
+                            break
+                    elif self._stop_event.wait(0.02):
+                        break
 
-                # A single read that burned the whole timeout means the socket is
-                # dead; tear down immediately instead of waiting for 30 failures.
-                if read_elapsed >= self.read_timeout - 0.5:
+                # Stall watchdog: safety net in case a stream stops producing frames
+                # without returning read errors (e.g. read timeout not enforced).
+                if (
+                    self._is_network
+                    and self._last_success_time > 0
+                    and (time.time() - self._last_success_time) > self.stall_timeout
+                ):
                     self._logger.warning(
-                        f"Read timed out after {read_elapsed:.1f}s, reconnecting..."
-                    )
-                    self._release_capture()
-                    time.sleep(self.reconnect_delay)
-                    continue
-
-                if self._consecutive_failures >= self.max_failures:
-                    self._logger.warning(
-                        f"Too many consecutive failures ({self._consecutive_failures}), "
+                        f"Stream stalled "
+                        f"({time.time() - self._last_success_time:.0f}s without a frame), "
                         f"reconnecting..."
                     )
                     self._release_capture()
-                    time.sleep(self.reconnect_delay)
-                else:
-                    time.sleep(0.02)
-
-            # Stall watchdog: safety net in case a stream stops producing frames
-            # without returning read errors (e.g. read timeout not enforced).
-            if (
-                self._is_network
-                and self._last_success_time > 0
-                and (time.time() - self._last_success_time) > self.stall_timeout
-            ):
-                self._logger.warning(
-                    f"Stream stalled "
-                    f"({time.time() - self._last_success_time:.0f}s without a frame), "
-                    f"reconnecting..."
-                )
-                self._release_capture()
-                time.sleep(self.reconnect_delay)
+                    if self._stop_event.wait(self.reconnect_delay):
+                        break
+        finally:
+            self._release_capture()
+            with self._lifecycle_lock:
+                if self._thread is threading.current_thread():
+                    self._running = False
 
 
 class CameraManager:
