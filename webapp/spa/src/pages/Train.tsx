@@ -4,6 +4,7 @@ import type { DatasetInfo, ModelsResponse, TrainRun, TrainStatus } from "../api/
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
+import { useConfirm } from "../ui/Confirm";
 import { useToast } from "../ui/Toast";
 import { Chip, Empty, useBusy } from "../ui/badges";
 
@@ -23,6 +24,7 @@ export default function TrainPage() {
   const [modelFiles, setModelFiles] = useState<string[]>([]);
   const [runs, setRuns] = useState<TrainRun[]>([]);
   const [status, setStatus] = useState<TrainStatus | null>(null);
+  const confirm = useConfirm();
   const [regRun, setRegRun] = useState<string | null>(null);
   const [regName, setRegName] = useState("");
   const [form, setForm] = useState({
@@ -72,7 +74,19 @@ export default function TrainPage() {
     return () => clearInterval(t);
   }, [pollStatus]);
 
+  const formValid =
+    !!form.dataset && +form.epochs > 0 && +form.imgsz > 0 && +form.batch > 0;
+  const running = status?.state === "running";
+
   const start = wrap("start", async () => {
+    if (!form.dataset) {
+      toast("请先选择数据集（无数据集时先到「数据集」页创建）", false);
+      return;
+    }
+    if (+form.epochs <= 0 || +form.imgsz <= 0 || +form.batch <= 0) {
+      toast("epochs / imgsz / batch 需为正数", false);
+      return;
+    }
     try {
       const r = await api<{ name: string; pid: number }>("/api/train/start", {
         method: "POST",
@@ -94,6 +108,12 @@ export default function TrainPage() {
   });
 
   const stop = wrap("stop", async () => {
+    if (
+      !(await confirm("终止当前训练？终止后本次训练进度将丢失。", {
+        okText: "终止训练",
+      }))
+    )
+      return;
     try {
       const r = await api<{ stopped: boolean }>("/api/train/stop", { method: "POST" });
       toast(r.stopped ? "已发送停止信号" : "当前没有运行中的训练");
@@ -216,10 +236,10 @@ export default function TrainPage() {
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
           <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-            <button disabled={busy.start} onClick={start}>
+            <button disabled={busy.start || running || !formValid} onClick={start}>
               <Icon name="play" size={13} /> 开始训练
             </button>
-            <button className="danger" disabled={busy.stop} onClick={stop}>
+            <button className="danger" disabled={busy.stop || !running} onClick={stop}>
               <Icon name="stop" size={13} /> 停止
             </button>
           </div>
@@ -290,14 +310,15 @@ export default function TrainPage() {
                   />
                 </div>
                 {st.best_path ? (
-                  <div className="muted" style={{ marginBottom: 8 }}>
-                    best.pt：{st.state === "completed" ? (
-                      <button className="mini" onClick={() => openRegister(st.name || "")}>
+                  <div className="muted" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      best.pt：{st.best_path}
+                    </span>
+                    {st.state === "completed" ? (
+                      <button className="mini" style={{ flexShrink: 0 }} onClick={() => openRegister(st.name || "")}>
                         注册为模型
                       </button>
-                    ) : (
-                      st.best_path
-                    )}
+                    ) : null}
                   </div>
                 ) : null}
               </div>

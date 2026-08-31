@@ -181,7 +181,10 @@ export default function AlertsPage() {
                         {relTime(a.timestamp)}
                       </div>
                     </td>
-                    <td>{a.camera_id}</td>
+                    <td>
+                      {cams.find((c) => String(c.id) === String(a.camera_id))?.name ??
+                        a.camera_id}
+                    </td>
                     <td>
                       <Chip text={"R" + String(a.rule_id).padStart(2, "0")} color="blue" />{" "}
                       {a.rule_name}
@@ -244,13 +247,19 @@ export default function AlertsPage() {
           </table>
         </div>
         <div className="pager">
-          <button className="mini ghost" onClick={() => page(-1)}>
+          <button className="mini ghost" disabled={offset <= 0} onClick={() => page(-1)}>
             上一页
           </button>
           <span className="muted">
-            {total ? `${Math.min(offset + 1, total)}–${Math.min(offset + LIMIT, total)} / ${total}` : ""}
+            {total
+              ? `${Math.min(offset + 1, total)}–${Math.min(offset + LIMIT, total)} / ${total} · 第 ${Math.floor(offset / LIMIT) + 1} 页`
+              : ""}
           </span>
-          <button className="mini ghost" onClick={() => page(1)}>
+          <button
+            className="mini ghost"
+            disabled={offset + LIMIT >= total}
+            onClick={() => page(1)}
+          >
             下一页
           </button>
         </div>

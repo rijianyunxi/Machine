@@ -134,7 +134,9 @@ export default function CamerasPage() {
   }, []);
 
   useEffect(() => {
-    api<{ rules: RuleEntry[] }>("/api/rules").then((r) => setRules(r.rules));
+    api<{ rules: RuleEntry[] }>("/api/rules")
+      .then((r) => setRules(r.rules))
+      .catch(() => toast("规则列表加载失败", false));
   }, []);
   usePolling(refresh, 5000);
 

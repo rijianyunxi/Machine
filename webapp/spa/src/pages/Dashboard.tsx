@@ -30,7 +30,11 @@ interface CamLite {
 }
 
 export default function DashboardPage() {
-  const [cams, setCams] = useState({ v: "—", sub: "", ico: "" });
+  const [cams, setCams] = useState<{ v: string; sub: React.ReactNode; ico: string }>({
+    v: "—",
+    sub: "",
+    ico: "",
+  });
   const [alerts, setAlerts] = useState({ v: "—", sub: "", pend: 0, ico: "" });
   const [snaps, setSnaps] = useState({ v: "—", sub: "", ico: "green" });
   const [up, setUp] = useState({ v: "—", sub: "" });
@@ -56,14 +60,23 @@ export default function DashboardPage() {
     const recon = enabled.filter((c) => !c.connected && c.thread_alive);
     setCams({
       v: `${online.length} / ${enabled.length}`,
-      sub:
-        `共 ${camsAll.length} 路` +
-        (offline.length
-          ? ` · <span class="bad">离线 ${offline.length}</span>`
-          : "") +
-        (recon.length
-          ? ` · <span class="warn">重连 ${recon.length}</span>`
-          : ""),
+      sub: (
+        <>
+          共 {camsAll.length} 路
+          {offline.length ? (
+            <>
+              {" · "}
+              <span className="bad">离线 {offline.length}</span>
+            </>
+          ) : null}
+          {recon.length ? (
+            <>
+              {" · "}
+              <span className="warn">重连 {recon.length}</span>
+            </>
+          ) : null}
+        </>
+      ),
       ico: offline.length ? "red" : recon.length ? "yellow" : "",
     });
 
@@ -139,42 +152,30 @@ export default function DashboardPage() {
         </div>
       ) : null}
       <div className="grid cards">
-        <div
-          className="stat link"
-          onClick={() => (window.location.href = "/cameras")}
-          title="进入监控管理"
-        >
+        <Link to="/cameras" className="stat link" title="进入监控管理">
           <div className={`ico ${cams.ico}`}>{camIcon}</div>
           <div>
             <div className="k">监控状态</div>
             <div className="v">{cams.v}</div>
-            <div className="sub" dangerouslySetInnerHTML={{ __html: cams.sub }} />
+            <div className="sub">{cams.sub}</div>
           </div>
-        </div>
-        <div
-          className="stat link"
-          onClick={() => (window.location.href = "/alerts")}
-          title="查看告警记录"
-        >
+        </Link>
+        <Link to="/alerts" className="stat link" title="查看告警记录">
           <div className={`ico ${alerts.ico}`}>{alertIcon}</div>
           <div>
             <div className="k">待处理告警</div>
             <div className={`v${alerts.pend > 0 ? " alerting" : ""}`}>{alerts.v}</div>
             <div className="sub">{alerts.sub}</div>
           </div>
-        </div>
-        <div
-          className="stat link"
-          onClick={() => (window.location.href = "/snapshots")}
-          title="查看快照库"
-        >
+        </Link>
+        <Link to="/snapshots" className="stat link" title="查看快照库">
           <div className={`ico ${snaps.ico}`}>{snapIcon}</div>
           <div>
             <div className="k">快照占用</div>
             <div className="v">{snaps.v}</div>
             <div className="sub">{snaps.sub}</div>
           </div>
-        </div>
+        </Link>
         <div className="stat">
           <div className="ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
@@ -246,12 +247,12 @@ export default function DashboardPage() {
               <span className="li">
                 <span
                   className="sw"
-                  style={{ background: "linear-gradient(180deg,#22d3ee,#4d9fff)" }}
+                  style={{ background: "linear-gradient(180deg, var(--accent-2), var(--accent))" }}
                 />
                 未处理
               </span>
               <span className="li">
-                <span className="sw" style={{ background: "rgba(122,138,160,.45)" }} />
+                <span className="sw" style={{ background: "var(--muted)" }} />
                 误报
               </span>
             </span>
@@ -263,8 +264,8 @@ export default function DashboardPage() {
               value: d.total,
               segments: [
                 { v: d.confirmed, c: "var(--red)", name: "确认违规" },
-                { v: d.pending, c: "url(#grad)", name: "未处理" },
-                { v: d.false_positive, c: "rgba(122,138,160,.45)", name: "误报" },
+                { v: d.pending, c: "var(--accent)", name: "未处理" },
+                { v: d.false_positive, c: "var(--muted)", name: "误报" },
               ],
             }))}
           />

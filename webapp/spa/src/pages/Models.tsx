@@ -17,6 +17,7 @@ export default function ModelsPage() {
   const [regEnabled, setRegEnabled] = useState(false);
   const [regOpen, setRegOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [confVals, setConfVals] = useState<Record<string, string>>({});
   const toast = useToast();
   const confirm = useConfirm();
   const { busy, wrap } = useBusy();
@@ -35,6 +36,10 @@ export default function ModelsPage() {
     const input = fileRef.current;
     if (!input || !input.files?.length) {
       toast("请先选择 .pt 文件", false);
+      return;
+    }
+    if (input.files[0].size > 200 * 1024 * 1024) {
+      toast("文件超过 200MB 上限", false);
       return;
     }
     const fd = new FormData();
@@ -76,12 +81,17 @@ export default function ModelsPage() {
     }
   });
 
-  const saveThreshold = (name: string, input: HTMLInputElement | null) =>
+  const saveThreshold = (name: string, raw: string) =>
     wrap(`th-${name}`, async () => {
+      const v = parseFloat(raw);
+      if (raw === "" || !Number.isFinite(v) || v < 0 || v > 1) {
+        toast("conf 需为 0~1 之间的数字", false);
+        return;
+      }
       try {
         await api(`/api/models/${encodeURIComponent(name)}`, {
           method: "PUT",
-          body: { confidence_override: +(input?.value ?? 0) },
+          body: { confidence_override: v },
         });
         toast("阈值已保存并热生效");
       } catch (e) {
@@ -183,19 +193,18 @@ export default function ModelsPage() {
                   <input
                     className="mini"
                     style={{ width: 76 }}
-                    id={`conf-${m.name}`}
                     type="number"
                     step={0.05}
                     min={0}
                     max={1}
-                    defaultValue={m.confidence ?? ""}
+                    placeholder={String(m.confidence ?? "")}
+                    value={confVals[m.name] ?? ""}
+                    onChange={(e) => setConfVals((v) => ({ ...v, [m.name]: e.target.value }))}
                   />
                   <button
                     className="mini"
                     disabled={busy[`th-${m.name}`]}
-                    onClick={() =>
-                      saveThreshold(m.name, document.getElementById(`conf-${m.name}`) as HTMLInputElement | null)
-                    }
+                    onClick={() => saveThreshold(m.name, confVals[m.name] ?? "")}
                   >
                     保存阈值
                   </button>

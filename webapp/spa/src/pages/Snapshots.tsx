@@ -79,7 +79,7 @@ export default function SnapshotsPage() {
         body: { before_date: d },
       });
       toast(`已删除 ${r.deleted_dirs} 个日期目录`);
-      query(applied, 0);
+      query(applied, 0).catch((e) => toast((e as Error).message, false));
     } catch (e) {
       toast((e as Error).message, false);
     }
@@ -93,7 +93,7 @@ export default function SnapshotsPage() {
       title="快照库"
       subtitle="按日期 / 规则分区存储，超期自动清理"
       actions={
-        <button className="ghost" disabled={busy.cleanup} onClick={cleanup}>
+        <button className="danger" disabled={busy.cleanup} onClick={cleanup}>
           清理 30 天前
         </button>
       }

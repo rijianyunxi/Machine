@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 /* SVG 堆叠柱状图（移植旧 renderBars/drawBarsIn，视觉一致）。
- * data: { label, value } 或堆叠 { label, value, segments: [{ v, c, name }] }。
- * height: 数字或 "fill"（撑满容器高度）。重复渲染安全。 */
+ * data: { label, value } 或堆叠 { label, segments: [{ v, c, name }] }。
+ * height: 数字或 "fill"（撑满容器高度）。重复渲染安全。
+ * 颜色用 CSS 变量（随主题切换）；渐变 id 用 useId 防同页多图冲突。 */
 
 export interface BarSegment {
   v: number;
@@ -24,6 +25,7 @@ export function BarChart({
   height?: number | "fill";
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const gradId = "bar-grad-" + useId().replace(/[:]/g, "");
   const [size, setSize] = useState({
     w: 0,
     h: typeof height === "number" ? height : 170,
@@ -82,7 +84,7 @@ export function BarChart({
           y1={y}
           x2={w - pad.r}
           y2={y}
-          stroke="rgba(148,163,184,.09)"
+          stroke="var(--border-strong)"
         />
         <text
           x={pad.l - 7}
@@ -132,7 +134,7 @@ export function BarChart({
           width={+(bw * 0.72).toFixed(1)}
           height={+bh.toFixed(1)}
           rx={3}
-          fill="url(#grad)"
+          fill={`url(#${gradId})`}
         >
           <title>{`${d.label}：${d.value} 条`}</title>
         </rect>,
@@ -176,9 +178,9 @@ export function BarChart({
           preserveAspectRatio="none"
         >
           <defs>
-            <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#4d9fff" />
+            <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent-2)" />
+              <stop offset="100%" stopColor="var(--accent)" />
             </linearGradient>
           </defs>
           {grid}
@@ -187,9 +189,9 @@ export function BarChart({
       ) : (
         <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
           <defs>
-            <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#4d9fff" />
+            <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent-2)" />
+              <stop offset="100%" stopColor="var(--accent)" />
             </linearGradient>
           </defs>
           {grid}

@@ -7,6 +7,7 @@ import type {
 } from "../api/types";
 import { ZoneRectEditor } from "./ZoneRectEditor";
 import { Icon } from "../layout/icons";
+import { useConfirm } from "./Confirm";
 
 /* 可视化规则画布编辑器（契约 docs/RULE_GRAPH_DESIGN.md §6）。
  * 左侧积木库（按分类分组）/ 中部画布（节点卡片 + SVG 连线）/ 右侧参数面板。
@@ -208,7 +209,7 @@ function ClassChips({
                 title="移除"
                 onClick={() => onChange(value.filter((x) => x !== v))}
               >
-                ×
+                <Icon name="x" size={10} />
               </button>
             </span>
           ))}
@@ -269,6 +270,7 @@ export function GraphEditor({
   const justDragged = useRef(false);
   const linkingRef = useRef<string | null>(null);
   const hintTimer = useRef<number | null>(null);
+  const confirm = useConfirm();
 
   const specs = Object.values(nodeTypes);
   const emptyLib = loadError || specs.length === 0;
@@ -380,7 +382,14 @@ export function GraphEditor({
       nodes: graph.nodes.map((n) => (n.id === id ? { ...n, params } : n)),
     });
 
-  const delNode = (id: string) => {
+  const delNode = async (id: string) => {
+    const n = graph.nodes.find((x) => x.id === id);
+    const edgeCount = graph.edges.filter((e) => e.from === id || e.to === id).length;
+    const msg =
+      edgeCount > 0
+        ? `删除节点「${n ? labelOf(n) : id}」？其 ${edgeCount} 条连线将一并删除。`
+        : `删除节点「${n ? labelOf(n) : id}」？`;
+    if (!(await confirm(msg))) return;
     onChange({
       nodes: graph.nodes.filter((n) => n.id !== id),
       edges: graph.edges.filter((e) => e.from !== id && e.to !== id),
@@ -388,10 +397,26 @@ export function GraphEditor({
     setSel(null);
   };
 
-  const delEdge = (key: string) => {
+  const delEdge = async (key: string) => {
     onChange({ ...graph, edges: graph.edges.filter((e) => edgeKey(e) !== key) });
     setSel(null);
   };
+
+  /* Delete/Backspace 删除当前选中项（焦点不在输入框时生效，与标注页习惯一致） */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (linkingRef.current) return;
+      if (!sel) return;
+      e.preventDefault();
+      if (sel.kind === "node") void delNode(sel.id);
+      else void delEdge(sel.key);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
 
   const tryConnect = (to: string) => {
     const from = linkingRef.current;
@@ -652,9 +677,9 @@ export function GraphEditor({
                     className="graph-edge-del"
                     style={{ left: m.x, top: m.y }}
                     title="删除这条连线"
-                    onClick={() => delEdge(edgeKey(selEdge))}
+                    onClick={() => void delEdge(edgeKey(selEdge))}
                   >
-                    ×
+                    <Icon name="x" size={11} />
                   </button>
                 );
               })()
@@ -752,7 +777,7 @@ export function GraphEditor({
                 type="button"
                 className="mini danger"
                 style={{ marginTop: 8 }}
-                onClick={() => delNode(selNode.id)}
+                onClick={() => void delNode(selNode.id)}
               >
                 删除节点
               </button>

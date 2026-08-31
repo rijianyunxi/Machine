@@ -497,6 +497,7 @@ pre.log .INFO { color: #64748b; }
 :root[data-theme="light"] pre.log .WARN { color: #f59e0b; }
 :root[data-theme="light"] pre.log .ERROR, :root[data-theme="light"] pre.log .CRITICAL { color: #f87171; }
 :root[data-theme="light"] pre.log .INFO { color: #94a3b8; }
+pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 
 /* ============ Images ============ */
 .thumb {
@@ -525,7 +526,8 @@ pre.log .INFO { color: #64748b; }
 /* ============ Dashboard ============ */
 
 /* clickable stat cards */
-.stat.link { cursor: pointer; }
+.stat.link { cursor: pointer; text-decoration: none; color: inherit; }
+.stat.link:hover { text-decoration: none; }
 .stat.link:hover { border-color: var(--accent); transform: translateY(-1px); }
 
 /* row2 cards stretch; chart/feed fill the full card height */

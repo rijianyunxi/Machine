@@ -91,20 +91,22 @@ export default function LogsPage() {
             <option value="2000">最近 2000 行</option>
             <option value="5000">最近 5000 行</option>
           </select>
-          <button className="mini ghost" onClick={refresh}>
+          <button className="mini" onClick={refresh}>
             刷新
           </button>
         </div>
         <pre className="log" ref={preRef}>
-          {lines === null
-            ? "加载中…"
-            : lines.length
-              ? lines.map((l, i) => (
-                  <div className={cls(l)} key={i}>
-                    {l}
-                  </div>
-                ))
-              : "暂无日志"}
+          {lines === null ? (
+            <span className="muted-lb">加载中…</span>
+          ) : lines.length ? (
+            lines.map((l, i) => (
+              <div className={cls(l)} key={i}>
+                {l}
+              </div>
+            ))
+          ) : (
+            <span className="muted-lb">暂无日志</span>
+          )}
         </pre>
       </div>
     </Page>

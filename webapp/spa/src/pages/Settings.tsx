@@ -4,7 +4,7 @@ import type { SettingsResponse } from "../api/types";
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { useToast } from "../ui/Toast";
-import { Chip, useBusy } from "../ui/badges";
+import { Chip, Empty, useBusy } from "../ui/badges";
 
 type Values = Record<string, Record<string, unknown>>;
 
@@ -39,17 +39,25 @@ export default function SettingsPage() {
 
   const [savingSec, setSavingSec] = useState<string | null>(null);
 
-  const doSave = async (section: string) => {
-    if (savingSec) return;
-    setSavingSec(section);
+  const doSave = async (section: string): Promise<boolean> => {
+    if (savingSec) return false;
     const vals = values[section] || {};
     const body: Record<string, unknown> = {};
     for (const k of data?.sections[section]?.keys || []) {
       const v = vals[k.key];
-      if (k.type === "int") body[k.key] = parseInt(String(v ?? 0)) || 0;
-      else if (k.type === "float") body[k.key] = parseFloat(String(v ?? 0)) || 0;
-      else body[k.key] = v;
+      if (k.type === "int" || k.type === "float") {
+        const raw = String(v ?? "").trim();
+        const n = k.type === "int" ? parseInt(raw, 10) : parseFloat(raw);
+        if (raw === "" || !Number.isFinite(n)) {
+          toast(`「${k.desc || k.key}」需为数字${raw ? `（当前 "${raw}"）` : ""}`, false);
+          return false;
+        }
+        body[k.key] = n;
+      } else {
+        body[k.key] = v;
+      }
     }
+    setSavingSec(section);
     try {
       const r = await api<{ restart_required: boolean }>(`/api/settings/${section}`, {
         method: "PUT",
@@ -57,8 +65,10 @@ export default function SettingsPage() {
       });
       toast(r.restart_required ? "已保存（部分项需重启完全生效）" : "已保存并热生效");
       refresh();
+      return true;
     } catch (e) {
       toast((e as Error).message, false);
+      return false;
     } finally {
       setSavingSec(null);
     }
@@ -88,7 +98,9 @@ export default function SettingsPage() {
   if (!data) {
     return (
       <Page title="系统设置" subtitle="所有配置落盘 settings.yaml 并尽可能热生效；改动前自动备份">
-        <div className="banner">加载中…</div>
+        <div className="card">
+          <Empty>加载中…</Empty>
+        </div>
       </Page>
     );
   }
@@ -174,7 +186,7 @@ export default function SettingsPage() {
                     disabled={busy.llmmodels}
                     onClick={fetchLlmModels}
                   >
-                    获取模型
+                    保存并获取模型
                   </button>
                 </div>
                 <p className="muted" style={{ marginTop: 6 }}>
@@ -192,7 +204,7 @@ export default function SettingsPage() {
             >
               {section === "llm" ? (
                 <button className="ghost" disabled={busy.llmtest} onClick={testLlm}>
-                  测试连接
+                  保存并测试连接
                 </button>
               ) : null}
               <button
