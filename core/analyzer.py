@@ -202,7 +202,8 @@ class ZoneIntrusionCheck:
     With dwell_seconds > 0 the target must stay inside continuously before
     the violation fires; dwell state is per (camera, rule, class)."""
 
-    # (camera_id, rule_id, cls) -> first-seen timestamp of continuous presence
+    # (camera_id, rule_id, cls) -> first-seen timestamp of continuous presence.
+    # This is intentionally class-level because detections have no tracker ID.
     _dwell_since: Dict[tuple, float] = {}
 
     def __call__(
@@ -218,22 +219,40 @@ class ZoneIntrusionCheck:
             return None
         fw, fh = float(frame_size[0]), float(frame_size[1])
 
-        best = None
+        # Aggregate the complete frame before updating class-level state.  An
+        # outside detection for a class must not reset that class's timer when
+        # another detection of the same class is inside the zone.  Likewise,
+        # a class with no qualifying detection in this frame must be reset so
+        # it cannot resume an old timer after disappearing and reappearing.
+        detections_by_class = {cls: [] for cls in target_classes}
         for det in detections:
-            if det.class_name.lower() not in target_classes:
-                continue
-            if det.confidence < min_conf:
-                continue
-            inside = self._in_zones(det.bbox, zones, fw, fh)
-            key = (camera_id, rule.id, det.class_name.lower())
-            if inside:
-                since = self._dwell_since.setdefault(key, timestamp)
-                if timestamp - since >= dwell and (
-                    best is None or det.confidence > best.confidence
-                ):
-                    best = det
-            else:
+            cls = det.class_name.lower()
+            if cls in detections_by_class and det.confidence >= min_conf:
+                detections_by_class[cls].append(det)
+
+        # Also discard state for classes removed by a hot-reloaded rule.
+        for key in list(self._dwell_since):
+            if (key[0], key[1]) == (camera_id, rule.id) and key[2] not in target_classes:
                 self._dwell_since.pop(key, None)
+
+        best = None
+        for cls, class_detections in detections_by_class.items():
+            key = (camera_id, rule.id, cls)
+            inside = [
+                det for det in class_detections
+                if self._in_zones(det.bbox, zones, fw, fh)
+            ]
+            if not inside:
+                self._dwell_since.pop(key, None)
+                continue
+
+            since = self._dwell_since.setdefault(key, timestamp)
+            if timestamp - since < dwell:
+                continue
+
+            candidate = max(inside, key=lambda det: det.confidence)
+            if best is None or candidate.confidence > best.confidence:
+                best = candidate
         if best is None:
             return None
         return _make_violation(camera_id, rule, best, timestamp)

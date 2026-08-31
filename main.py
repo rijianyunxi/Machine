@@ -32,7 +32,7 @@ from core.capture import CameraManager, CameraConfig
 from core.detector import MultiDetector
 from core.snapshot import SnapshotManager
 from rules.rules_engine import get_all_rules, get_rules_store
-from storage.db import AlertDatabase
+from infrastructure.persistence import AlertDatabase
 from utils.logger import setup_logger
 
 
@@ -225,8 +225,6 @@ class MachineVisionSystem:
                 detections = self._detector.detect_all(
                     frame_data.frame, model_names=sorted(models_needed) or None
                 )
-                if not detections:
-                    continue
 
                 # Analyze for violations
                 h, w = frame_data.frame.shape[:2]

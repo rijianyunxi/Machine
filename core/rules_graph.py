@@ -10,8 +10,8 @@ boxes so downstream spatial nodes can do geometry) and the ``alert`` node
 emits a Violation on the input's rising edge (prev frame false -> now true).
 
 Evaluation state (duration timers / alert edge memory) is kept per
-(rule_id, node_id) in module-level dicts — same pattern as ZoneIntrusionCheck's
-dwell tracking in core/analyzer.py.
+(camera_id, rule_id, node_id) in a module-level dict.  This keeps temporal
+conditions independent when the same rule is assigned to multiple cameras.
 """
 
 from typing import Dict, List, Optional
@@ -133,12 +133,12 @@ NODE_TYPES: Dict[str, dict] = {
     },
 }
 
-# 跨帧记忆：(rule_id, node_id) -> duration 连续为真起点 / alert 上一帧输入状态
+# 跨帧记忆：(camera_id, rule_id, node_id) -> duration 连续为真起点
 _duration_since: Dict[tuple, float] = {}
 
 
 def _reset_state():
-    """清空全部跨帧记忆（测试辅助；运行态按 (rule_id, node_id) 保留）。"""
+    """清空全部跨帧记忆（测试辅助；运行态按相机/规则/节点保留）。"""
     _duration_since.clear()
 
 
@@ -306,7 +306,7 @@ def _eval_duration(params: dict, input_signal: dict, timestamp: float,
 
 def _eval_node(node_id, node: dict, inputs: List[dict],
                detections: List[Detection], frame_size: Optional[tuple],
-               timestamp: float, rule_id: int) -> dict:
+               timestamp: float, rule_id: int, camera_id: str = "") -> dict:
     """求值单个非 alert 节点，返回信号 {state: bool, targets: list}。"""
     ntype = node["type"]
     if NODE_TYPES[ntype]["inputs"] > 0 and not inputs:
@@ -324,7 +324,7 @@ def _eval_node(node_id, node: dict, inputs: List[dict],
         return _eval_near_class(params, inputs[0], detections)
     if ntype == "duration":
         return _eval_duration(params, inputs[0], timestamp,
-                              key=(rule_id, node_id))
+                              key=(camera_id, rule_id, node_id))
     if ntype == "not":
         # state 取反，targets 清空
         return {"state": not inputs[0].get("state", False), "targets": []}
@@ -427,6 +427,7 @@ def evaluate_graph(
             signals[nid] = _false_signal()  # alert 消耗信号，无输出
         else:
             signals[nid] = _eval_node(
-                nid, node, inputs, detections, frame_size, timestamp, rule_id
+                nid, node, inputs, detections, frame_size, timestamp, rule_id,
+                camera_id,
             )
     return None
