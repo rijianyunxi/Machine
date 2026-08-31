@@ -80,6 +80,21 @@
 :root[data-theme="light"] button.danger { border-color: rgba(217, 45, 32, 0.35); }
 :root[data-theme="light"] tbody tr:hover { background: rgba(35, 36, 37, 0.035); }
 
+/* 亮色下导航高亮：参考站式浅灰实底 + 近黑文字（原蓝底白字在亮背景上不可读） */
+:root[data-theme="light"] .nav a.active {
+  background: #e9e9eb;
+  color: #232425;
+}
+:root[data-theme="light"] .nav a.active svg { color: #232425; }
+:root[data-theme="light"] .nav a.active::before {
+  background: #232425;
+}
+/* 亮色下 hover 也换中性灰，与参考站一致 */
+:root[data-theme="light"] .nav a:hover {
+  background: #ececee;
+  color: #232425;
+}
+
 /* 亮色下去掉 logo 的彩色光晕，改为参考站的轻投影 */
 :root[data-theme="light"] .brand .logo {
   background: #232425;
