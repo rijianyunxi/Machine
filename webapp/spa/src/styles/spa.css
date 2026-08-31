@@ -904,3 +904,20 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 :root[data-theme="light"] .graph-canvas {
   background-image: radial-gradient(rgba(15, 23, 42, 0.1) 1px, transparent 1px);
 }
+
+/* ============ 数据集卡片 ============ */
+.ds-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+}
+.ds-name { min-width: 0; }
+.ds-name b {
+  display: block; font-size: 14.5px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds-name .muted { font-size: 11.5px; }
+.ds-classes {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  margin-top: 10px;
+}
+.ds-classes .lbl { font-size: 11.5px; color: var(--muted); }
+.lbl { font-size: 11.5px; color: var(--muted); }
