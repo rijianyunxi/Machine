@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Machine · 安全行为检测面板</title>
+  <script>
+    /* 首屏前定主题：默认亮色，用户切换后由 localStorage 记忆 */
+    (function () {
+      var t = localStorage.getItem("panel-theme");
+      if (t !== "light" && t !== "dark") t = "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
 </head>
 <body>
