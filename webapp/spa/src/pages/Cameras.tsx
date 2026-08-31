@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Camera, CameraTestResult, RuleEntry } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { usePolling } from "../hooks/usePolling";
 import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
@@ -200,15 +201,15 @@ export default function CamerasPage() {
       setTestResult(
         r.ok ? (
           <Chip
-            text={`✓ 可播放 · ${r.width}×${r.height} @ ${r.fps}fps · 首帧 ${r.latency_ms}ms`}
+            text={`可播放 · ${r.width}×${r.height} @ ${r.fps}fps · 首帧 ${r.latency_ms}ms`}
             color="green"
           />
         ) : (
-          <Chip text={`✕ ${r.error}`} color="red" />
+          <Chip text={r.error} color="red" />
         ),
       );
     } catch (e) {
-      setTestResult(<Chip text={`✕ ${(e as Error).message}`} color="red" />);
+      setTestResult(<Chip text={(e as Error).message} color="red" />);
     }
   });
 
@@ -275,7 +276,11 @@ export default function CamerasPage() {
     <Page
       title="监控管理"
       subtitle="新增 / 编辑即时热生效；分段填写自动组装 RTSP，支持测试播放"
-      actions={<button onClick={() => openEdit(null)}>＋ 新增监控</button>}
+      actions={
+        <button onClick={() => openEdit(null)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="plus" size={13} /> 新增监控
+        </button>
+      }
     >
       <div className="card">
         <div className="table-wrap">
@@ -388,7 +393,7 @@ export default function CamerasPage() {
           footer={
             <>
               <button className="ghost" disabled={busy.test} onClick={testPlay}>
-                ▶ 测试播放
+                <Icon name="play" size={12} /> 测试播放
               </button>
               <span style={{ flex: 1 }} />
               <button className="ghost" onClick={() => setModalOpen(false)}>

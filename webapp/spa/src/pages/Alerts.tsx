@@ -71,6 +71,10 @@ export default function AlertsPage() {
     refresh(next);
   };
 
+  useEffect(() => {
+    setNote("");
+  }, [target?.id]);
+
   const submitStatus = wrap("mark", async () => {
     if (!target) return;
     try {

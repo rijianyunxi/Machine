@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Icon } from "../layout/icons";
 
 /* 图片灯箱（对齐旧 showGallery/showImageModal）：±1 邻图预加载、←→ 翻页、
  * Esc/点击遮罩关闭、加载 spinner。 */
@@ -32,12 +33,14 @@ export function useLightbox() {
 export function LightboxProvider({ children }: { children: React.ReactNode }) {
   const [gal, setGal] = useState<GalleryState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
   const idxRef = useRef(0);
 
   const showGallery = useCallback((items: GalleryItem[], index = 0) => {
     if (!items.length) return;
     idxRef.current = index;
     setLoading(true);
+    setErr(false);
     setGal({ items, index });
   }, []);
 
@@ -53,6 +56,7 @@ export function LightboxProvider({ children }: { children: React.ReactNode }) {
       const index = (idxRef.current + delta + n) % n;
       idxRef.current = index;
       setLoading(true);
+      setErr(false);
       return { ...g, index };
     });
   }, []);
@@ -88,8 +92,8 @@ export function LightboxProvider({ children }: { children: React.ReactNode }) {
       {gal && item && (
         <div id="img-modal" className="modal-mask img-modal open" onClick={close}>
           <figure className="img-lightbox">
-            <button className="lightbox-x" title="关闭 (Esc)" onClick={close}>
-              ✕
+            <button className="lightbox-x" title="关闭 (Esc)" onClick={close} aria-label="关闭">
+              <Icon name="x" size={13} />
             </button>
             {many && (
               <button
@@ -100,7 +104,7 @@ export function LightboxProvider({ children }: { children: React.ReactNode }) {
                   nav(-1);
                 }}
               >
-                ‹
+                <Icon name="chevron-left" size={18} />
               </button>
             )}
             {many && (
@@ -112,16 +116,27 @@ export function LightboxProvider({ children }: { children: React.ReactNode }) {
                   nav(1);
                 }}
               >
-                ›
+                <Icon name="chevron-right" size={18} />
               </button>
             )}
             <div className="lb-spinner" style={{ display: loading ? "" : "none" }} />
-            <img
-              alt="预览"
-              src={item.src}
-              onLoad={() => setLoading(false)}
-              onClick={(e) => e.stopPropagation()}
-            />
+            {err ? (
+              <div className="lb-error">
+                <Icon name="alert-triangle" size={18} />
+                <span>图片加载失败</span>
+              </div>
+            ) : (
+              <img
+                alt="预览"
+                src={item.src}
+                onLoad={() => setLoading(false)}
+                onError={() => {
+                  setLoading(false);
+                  setErr(true);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
             <figcaption>
               {many
                 ? `${item.title ? item.title + " · " : ""}${gal.index + 1} / ${gal.items.length}`

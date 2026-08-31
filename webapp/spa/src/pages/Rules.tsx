@@ -10,6 +10,7 @@ import type {
   TemplateSpec,
 } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { usePolling } from "../hooks/usePolling";
 import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
@@ -465,7 +466,11 @@ export default function RulesPage() {
     <Page
       title="规则配置"
       subtitle="三步完成一个检测：模型里来类别，规则定何时告警，监控里选哪路画面"
-      actions={<button onClick={() => setGalleryOpen(true)}>＋ 新建规则</button>}
+      actions={
+        <button onClick={() => setGalleryOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="plus" size={13} /> 新建规则
+        </button>
+      }
     >
       <div className="card">
         {rules === null ? (
@@ -491,7 +496,7 @@ export default function RulesPage() {
               </div>
               {r.description ? <div className="desc">{r.description}</div> : null}
               {r.warnings?.length ? (
-                <div className="warn">⚠ {r.warnings.join("；")}</div>
+                <div className="warn"><Icon name="alert-triangle" size={12} /> {r.warnings.join("；")}</div>
               ) : null}
               <div className="meta">
                 {r.template === "graph" ? (

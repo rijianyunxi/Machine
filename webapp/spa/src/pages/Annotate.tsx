@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { DatasetInfo } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { useToast } from "../ui/Toast";
 import { Empty, useBusy } from "../ui/badges";
 
@@ -504,10 +505,10 @@ export default function AnnotatePage() {
             ))}
           </select>
           <button className="ghost" disabled={busy.prelabel} onClick={aiPrelabel}>
-            ⚡ YOLO 预标注
+            <Icon name="zap" size={13} /> YOLO 预标注
           </button>
           <button className="ghost" disabled={busy.llm} onClick={rerunAi}>
-            ✨ AI 识别
+            <Icon name="sparkles" size={13} /> AI 识别
           </button>
           <button onClick={() => saveLabels()}>保存 (Ctrl+S)</button>
         </>
@@ -549,7 +550,14 @@ export default function AnnotatePage() {
                     >
                       {im.file.slice(0, 12)}
                     </span>
-                    <span>{im.labeled ? "✅" : "⬜"}</span>
+                    <span
+                      title={im.labeled ? "已标注" : "未标注"}
+                      style={{
+                        width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+                        background: im.labeled ? "var(--green)" : "transparent",
+                        border: im.labeled ? "none" : "2px solid var(--border-strong)",
+                      }}
+                    />
                   </figcaption>
                 </figure>
               ))
@@ -651,14 +659,14 @@ export default function AnnotatePage() {
           <div className="toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>
             <span className="muted">{img ? img.file : "未选择图片"}</span>
             <span className="toolbar">
-              <button className="mini ghost" onClick={() => nav(-1)}>
-                ← 上一张
+              <button className="mini ghost" disabled={idx <= 0} onClick={() => nav(-1)}>
+                <Icon name="chevron-left" size={13} /> 上一张
               </button>
               <span className="muted">
                 {images.length ? `${idx + 1}/${images.length}` : "0/0"}
               </span>
-              <button className="mini ghost" onClick={() => nav(1)}>
-                下一张 →
+              <button className="mini ghost" disabled={idx >= images.length - 1} onClick={() => nav(1)}>
+                下一张 <Icon name="chevron-right" size={13} />
               </button>
             </span>
           </div>
@@ -686,7 +694,9 @@ export default function AnnotatePage() {
                   </span>
                   <span>{c}</span>
                   {i === curCls ? (
-                    <span style={{ marginLeft: "auto", color: "var(--accent)" }}>✓</span>
+                    <span style={{ marginLeft: "auto", color: "var(--accent)", display: "inline-flex" }}>
+                      <Icon name="check" size={13} />
+                    </span>
                   ) : null}
                 </div>
               ))}
@@ -758,13 +768,14 @@ export default function AnnotatePage() {
                     </span>
                     <button
                       className="mini danger"
-                      style={{ padding: "1px 7px" }}
+                      style={{ padding: "1px 7px", display: "inline-flex", alignItems: "center" }}
+                      title="删除此框"
                       onClick={(e) => {
                         e.stopPropagation();
                         delBox(i);
                       }}
                     >
-                      ✕
+                      <Icon name="x" size={11} />
                     </button>
                   </div>
                 ))
@@ -812,7 +823,7 @@ export default function AnnotatePage() {
                   disabled={busy.llm}
                   onClick={rerunAi}
                 >
-                  🔄 重新识别
+                  <Icon name="refresh" size={12} /> 重新识别
                 </button>
               </div>
             ) : null}

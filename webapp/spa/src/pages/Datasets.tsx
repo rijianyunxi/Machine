@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { DatasetInfo, PrelabelStatus } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
 import { useToast } from "../ui/Toast";
@@ -36,6 +37,7 @@ export default function DatasetsPage() {
   const confirm = useConfirm();
   const lightbox = useLightbox();
   const { busy, wrap } = useBusy();
+  const [busyPl, setBusyPl] = useState(false);
 
   const refresh = useCallback(async () => {
     const r = await api<{ datasets: DatasetInfo[] }>("/api/datasets");
@@ -120,6 +122,8 @@ export default function DatasetsPage() {
   });
 
   const prelabel = async (name: string) => {
+    if (busy.pl || pre[name]?.running) return;
+    setBusyPl(true);
     try {
       await api(`/api/datasets/${encodeURIComponent(name)}/prelabel`, {
         method: "POST",
@@ -129,6 +133,8 @@ export default function DatasetsPage() {
       setPre((m) => ({ ...m, [name]: { running: true, done: 0, total: 0 } }));
     } catch (e) {
       toast((e as Error).message, false);
+    } finally {
+      setBusyPl(false);
     }
   };
 
@@ -201,7 +207,11 @@ export default function DatasetsPage() {
     <Page
       title="数据集"
       subtitle="YOLO 格式数据集：新建 / 导入图片 / 从快照导入 / AI 批量预标注"
-      actions={<button onClick={() => setCreateOpen(true)}>＋ 新建数据集</button>}
+      actions={
+        <button onClick={() => setCreateOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="plus" size={13} /> 新建数据集
+        </button>
+      }
     >
       <div className="grid cards">
         {datasets === null ? (
@@ -260,7 +270,7 @@ export default function DatasetsPage() {
                 </button>
                 <button
                   className="mini ghost"
-                  disabled={busy.pl}
+                  disabled={busyPl || !!pre[d.name]?.running}
                   onClick={() => prelabel(d.name)}
                 >
                   {pre[d.name]?.running

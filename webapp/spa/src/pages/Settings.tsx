@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { SettingsResponse } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { useToast } from "../ui/Toast";
 import { Chip, useBusy } from "../ui/badges";
 
@@ -100,7 +101,10 @@ export default function SettingsPage() {
       subtitle="所有配置落盘 settings.yaml 并尽可能热生效；改动前自动备份"
     >
       {pend.length ? (
-        <div className="banner">⚠ 以下配置段需重启主程序才能完全生效：{pend.join("、")}</div>
+        <div className="banner">
+          <Icon name="alert-triangle" size={15} />
+          <span>以下配置段需重启主程序才能完全生效：{pend.join("、")}</span>
+        </div>
       ) : null}
       <div
         className="grid"

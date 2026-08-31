@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { AlertItem, StorageUsage, TrendDay } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { usePolling } from "../hooks/usePolling";
 import { BarChart } from "../ui/BarChart";
 import { Chip, Empty, StatusBadge } from "../ui/badges";
@@ -34,7 +36,7 @@ export default function DashboardPage() {
   const [up, setUp] = useState({ v: "—", sub: "" });
   const [trend, setTrend] = useState<TrendDay[]>([]);
   const [feed, setFeed] = useState<AlertItem[] | null>(null);
-  const [banner, setBanner] = useState("");
+  const [banner, setBanner] = useState<{ level: string; msg: string } | null>(null);
 
   const refresh = useCallback(async () => {
     const [stats, camList, usage, tr, pending] = await Promise.all([
@@ -94,8 +96,11 @@ export default function DashboardPage() {
 
     setBanner(
       usage.watermark !== "ok"
-        ? `⚠ 磁盘空间${usage.watermark === "red" ? "严重不足" : "偏低"}（已用 ${usage.disk_used_pct}%），建议清理历史快照或缩短保留天数。`
-        : "",
+        ? {
+            level: usage.watermark,
+            msg: `磁盘空间${usage.watermark === "red" ? "严重不足" : "偏低"}（已用 ${usage.disk_used_pct}%），建议清理历史快照或缩短保留天数。`,
+          }
+        : null,
     );
     setTrend(tr.trend);
 
@@ -127,7 +132,12 @@ export default function DashboardPage() {
 
   return (
     <Page title="总览" subtitle="系统运行状态与实时告警总览">
-      {banner ? <div className="banner">{banner}</div> : null}
+      {banner ? (
+        <div className={"banner" + (banner.level === "red" ? " red" : "")}>
+          <Icon name="alert-triangle" size={15} />
+          <span>{banner.msg}</span>
+        </div>
+      ) : null}
       <div className="grid cards">
         <div
           className="stat link"
@@ -190,9 +200,9 @@ export default function DashboardPage() {
               {alerts.pend > 0 ? (
                 <Chip text={`${alerts.pend} 条待处理`} color="red" />
               ) : null}
-              <a className="more" href="/alerts">
-                查看全部 →
-              </a>
+              <Link className="more" to="/alerts" style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                查看全部 <Icon name="arrow-right" size={12} />
+              </Link>
             </span>
           </div>
           <div className="feed" id="alert-feed">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { ModelsResponse } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
 import { useConfirm } from "../ui/Confirm";
 import { useToast } from "../ui/Toast";
@@ -225,7 +226,8 @@ export default function ModelsPage() {
         <div className="card">
           <div className="card-title">模型文件</div>
           <div className="banner" style={{ marginBottom: 12 }}>
-            ⚠ .pt 为可执行 pickle，仅导入可信来源的模型；上限 200MB
+            <Icon name="alert-triangle" size={14} />
+            <span>.pt 为可执行 pickle，仅导入可信来源的模型；上限 200MB</span>
           </div>
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <label

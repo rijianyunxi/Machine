@@ -25,6 +25,7 @@ export default function SnapshotsPage() {
   const [files, setFiles] = useState<SnapshotFile[]>([]);
   const [total, setTotal] = useState(0);
   const [totalMb, setTotalMb] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
   const { busy, wrap } = useBusy();
@@ -45,6 +46,7 @@ export default function SnapshotsPage() {
       const have = new Set(base.map((x) => x.url));
       return [...base, ...(data.files || []).filter((x) => !have.has(x.url))];
     });
+    setLoaded(true);
   }, []);
 
   const apply = useCallback(
@@ -185,7 +187,7 @@ export default function SnapshotsPage() {
             ))
           ) : (
             <div style={{ gridColumn: "1/-1" }}>
-              <Empty>暂无符合条件的快照</Empty>
+              <Empty>{loaded ? "暂无符合条件的快照" : "加载中…"}</Empty>
             </div>
           )}
         </div>

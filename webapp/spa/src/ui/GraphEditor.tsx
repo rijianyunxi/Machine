@@ -6,6 +6,7 @@ import type {
   RuleGraph,
 } from "../api/types";
 import { ZoneRectEditor } from "./ZoneRectEditor";
+import { Icon } from "../layout/icons";
 
 /* 可视化规则画布编辑器（契约 docs/RULE_GRAPH_DESIGN.md §6）。
  * 左侧积木库（按分类分组）/ 中部画布（节点卡片 + SVG 连线）/ 右侧参数面板。
@@ -772,11 +773,11 @@ export function GraphEditor({
       {errs.length ? (
         <div className="graph-errs">
           {errs.map((m, i) => (
-            <div key={i}>✕ {m}</div>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="x" size={12} /> {m}</div>
           ))}
         </div>
       ) : (
-        <div className="graph-ok">✓ 画布校验通过，可保存</div>
+        <div className="graph-ok" style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="check" size={12} /> 画布校验通过，可保存</div>
       )}
     </div>
   );

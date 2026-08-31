@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { DatasetInfo, ModelsResponse, TrainRun, TrainStatus } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { Chip, Empty, useBusy } from "../ui/badges";
@@ -216,10 +217,10 @@ export default function TrainPage() {
           />
           <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
             <button disabled={busy.start} onClick={start}>
-              ▶ 开始训练
+              <Icon name="play" size={13} /> 开始训练
             </button>
             <button className="danger" disabled={busy.stop} onClick={stop}>
-              ■ 停止
+              <Icon name="stop" size={13} /> 停止
             </button>
           </div>
           <p className="muted" style={{ marginTop: 12 }}>
