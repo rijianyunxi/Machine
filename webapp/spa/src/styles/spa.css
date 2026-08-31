@@ -36,32 +36,54 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* ============ 亮色主题 ============ */
+/* ============ 亮色主题（genspark 风：白卡片 + 浅灰画布 + 近黑主按钮） ============ */
 :root[data-theme="light"] {
-  --bg: #eef1f6;
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface-2: #f4f6fa;
-  --surface-3: #e8ecf3;
-  --border: rgba(15, 23, 42, 0.1);
-  --border-strong: rgba(15, 23, 42, 0.2);
-  --text: #16202e;
-  --text-2: #3c4b61;
-  --muted: #64748b;
-  --accent: #2b7de9;
-  --accent-2: #0891b2;
-  --accent-soft: rgba(43, 125, 233, 0.12);
-  --green: #0a9e6e;
-  --green-soft: rgba(10, 158, 110, 0.12);
-  --yellow: #c77c06;
-  --yellow-soft: rgba(199, 124, 6, 0.14);
-  --red: #dc4b4b;
-  --red-soft: rgba(220, 75, 75, 0.11);
-  --shadow: 0 8px 28px rgba(15, 23, 42, 0.1);
+  --surface-2: #f2f2f2;   /* 侧栏/输入底，同参考站 */
+  --surface-3: #e9e9eb;
+  --border: rgba(35, 36, 37, 0.08);
+  --border-strong: rgba(35, 36, 37, 0.16);
+  --text: #232425;        /* 参考站主文字 */
+  --text-2: #494b4e;
+  --muted: #85898e;       /* 参考 #909499 微加深保对比度 */
+  --accent: #0a7aff;      /* 参考 #007aff 微加深 */
+  --accent-2: #0a7aff;
+  --accent-soft: rgba(10, 122, 255, 0.1);
+  --green: #1a7f37;
+  --green-soft: rgba(26, 127, 55, 0.1);
+  --yellow: #b45309;
+  --yellow-soft: rgba(180, 86, 10, 0.1);
+  --red: #d92d20;
+  --red-soft: rgba(217, 45, 32, 0.09);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.04);
   --on-accent: #ffffff;
-  --glass: rgba(255, 255, 255, 0.82);
-  --card-veil: linear-gradient(180deg, #ffffff, #f7f9fc);
-  --head-veil: linear-gradient(rgba(247, 249, 252, 0.94), rgba(247, 249, 252, 0.8));
+  --glass: #f2f2f2;
+  --card-veil: #ffffff;
+  --head-veil: linear-gradient(rgba(247, 247, 248, 0.94), rgba(247, 247, 248, 0.86));
   color-scheme: light;
+  /* genspark 的中性圆角尺度：卡片 16、控件 10 */
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+/* 亮色下主按钮改为参考站的近黑实心（含 mini 尺寸，保持主次一致） */
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle) {
+  background: #232425;
+  border-color: #232425;
+  color: #fff;
+}
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):hover {
+  background: #35373a;
+  filter: none;
+}
+:root[data-theme="light"] button.danger { border-color: rgba(217, 45, 32, 0.35); }
+:root[data-theme="light"] tbody tr:hover { background: rgba(35, 36, 37, 0.035); }
+
+/* 亮色下去掉 logo 的彩色光晕，改为参考站的轻投影 */
+:root[data-theme="light"] .brand .logo {
+  background: #232425;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,10 +100,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 :root[data-theme="light"] body {
-  background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(43, 125, 233, 0.06), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(8, 145, 178, 0.05), transparent 55%),
-    var(--bg);
+  background: var(--bg);
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
