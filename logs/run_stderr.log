@@ -1,3 +1,0 @@
-[ WARN:1@1625.060] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
-[ WARN:3@1684.844] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30000.905519 ms
-[ WARN:3@1684.845] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name

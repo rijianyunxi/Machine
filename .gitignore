@@ -1,23 +1,19 @@
-# 仅排除不可入库的环境与缓存（仓库为私有，数据/配置/模型全部入库）
+# 环境与依赖
 .venv/
+webapp/spa/node_modules/
+
+# Python 运行缓存
 __pycache__/
 *.py[cod]
-*.egg-info/
-dist/
-build/
-.eggs/
 
 # IDE / 系统
 .idea/
-.vscode/
-*.swp
-*.swo
 .DS_Store
 Thumbs.db
-.zcode/
-storage/snapshots/
 
-# 前端 SPA：依赖不入库；构建产物 dist 入库（运行时无 Node 也能直接服务）
-webapp/spa/node_modules/
-!webapp/spa/dist/
+# 配置自动备份
 *.yaml.bak
+
+# 运行数据与训练产物
+storage/
+runs/
