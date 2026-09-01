@@ -122,8 +122,7 @@ class RuntimeState:
         self._logger = get_logger("panel.state")
 
         # Embedded mode reuses the main process ConfigManager/database.
-        # Standalone mode opens the same fixed machine.db; YAML is imported only
-        # by the explicit tools/import_yaml_config.py migration command.
+        # Standalone mode opens the same fixed machine.db.
         if system is not None and getattr(system, "_config_manager", None) is not None:
             self.config_manager = system._config_manager
         else:

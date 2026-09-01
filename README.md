@@ -13,7 +13,7 @@
 - 规则模板、规则参数和画布 graph；
 - 告警记录、名称快照和截图状态。
 
-运行时不依赖仓库内的 YAML 文件，页面保存不会回写 YAML，程序启动也不会隐式读取 YAML。需要迁移外部旧配置时，必须通过导入工具显式指定 YAML 目录。
+运行时不依赖仓库内的 YAML 文件，页面保存不会回写 YAML，程序启动也不会隐式读取 YAML。配置和告警统一以 `storage/machine.db` 为准。
 
 ## 快速开始
 
@@ -79,17 +79,9 @@ python main.py
 python -m webapp.server
 ```
 
-### 外部配置导入、导出、备份和恢复
+### 配置导出、备份和恢复
 
 ```bash
-# 如需迁移外部旧 YAML 配置，必须显式指定 YAML 目录
-python tools/import_yaml_config.py --config-dir /path/to/yaml \
-  --database storage/machine.db
-
-# 明确覆盖数据库中的配置
-python tools/import_yaml_config.py --config-dir /path/to/yaml \
-  --database storage/machine.db --reset
-
 # 导出不含 API key、密码哈希和 RTSP 明文密码的公共配置
 python tools/export_public_config.py --database storage/machine.db \
   --output storage/config-public.json
@@ -125,7 +117,7 @@ core/             取流 / 检测 / 分析 / 快照
 rules/            规则数据模型与判定逻辑常量
 infrastructure/   machine.db、Repository、告警持久化
 storage/          运行数据：machine.db / snapshots/ / backups/
-tools/            外部 YAML 导入、脱敏导出、备份和恢复工具
+tools/            配置导出、备份和恢复工具
 webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist）
 ```
 

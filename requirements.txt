@@ -9,9 +9,8 @@ scipy
 # YOLOv8 detection model
 ultralytics==8.4.123
 
-# Configuration
+# YAML support for YOLO dataset metadata
 PyYAML
-ruamel.yaml
 
 # Web panel
 fastapi

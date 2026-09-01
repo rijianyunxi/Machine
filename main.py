@@ -78,8 +78,6 @@ class MachineVisionSystem:
         self._shutdown = False
 
         # Runtime configuration is read only from the unified machine.db.
-        # YAML migration is explicit (see tools/import_yaml_config.py), never
-        # performed implicitly during process startup.
         self._database = MachineDatabase(PROJECT_ROOT / "storage" / "machine.db")
         self._config_repository = ConfigRepository(self._database)
         self._config_manager = ConfigManager(self._config_repository)

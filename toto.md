@@ -471,21 +471,9 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 - YAML 不再作为运行时回退；
 - 禁止“先写 YAML，再同步 SQLite”或反向双写。
 
-### 7.2 一次性导入
+### 7.2 不保留配置 YAML 导入工具
 
-提供显式命令，例如：
-
-`python -m tools.import_yaml_config --config-dir /path/to/yaml --database storage/machine.db`
-
-导入要求：
-
-- 在单个事务中导入 settings、models、cameras、templates、rules 和关联；
-- 导入前完成 schema 校验和引用校验；
-- 任一实体失败则全部回滚；
-- 输出导入统计和明确错误位置；
-- 默认拒绝导入到已存在配置数据的数据库；
-- 开发阶段允许使用 `--reset` 明确重建数据库；
-- 不在每次应用启动时自动重复导入。
+仓库不再提供固定的配置 YAML 和命令行导入工具。配置与告警统一存储在 `storage/machine.db`，初始化、修改、备份和恢复均围绕 SQLite 数据库进行。数据集功能所需的 `dataset.yaml` 属于数据集格式，不属于系统配置。
 
 ### 7.3 导出
 
@@ -616,7 +604,7 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 
 已验证：前端生产构建通过；后端统一数据库回归测试覆盖 revision、热同步、导入回滚和敏感字段语义。
 
-备注：运行时已不再自动导入 YAML；如需迁移外部旧配置，必须显式指定 YAML 目录执行 `tools/import_yaml_config.py`。仓库内不再保留固定 `config/` YAML。
+备注：运行时已不再自动导入 YAML；仓库内也不再保留固定的系统配置 YAML 或命令行导入工具。
 
 ### 阶段 5：调整告警快照和截图状态
 
@@ -638,13 +626,13 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 - [ ] 删除重复默认值覆盖逻辑。
   说明：设置页的 `SETTINGS_SCHEMA` 服务于表单校验，外部 YAML 导入数据由导入器单独校验；运行时已删除未使用的规则 seed 默认副本。
 - [x] 删除已废弃的 YAML 写入服务和调用点。
-- [x] 保留独立的 import/export 工具，导入时必须显式指定外部 YAML 目录。
-- [x] 删除仓库内的 `config/` YAML 样例和首次导入依赖。
+- [x] 删除配置 YAML 导入工具，仅保留数据库公共配置导出、备份和恢复工具。
+- [x] 删除仓库内的 `config/` YAML 样例、首次导入依赖和命令行导入工具。
 - [x] 删除未被运行时引用的 `rules/rules_engine.py` 兼容导出层、死代码 API 和无效的 `--config` 运行时参数。
 - [x] 更新 README、配置说明、备份与恢复说明。
 - [x] 检查 Git 中不应提交 `machine.db`、`machine.db-wal`、`machine.db-shm`、密钥和实际摄像头凭据。
 
-完成标准：搜索业务代码不存在直接读写配置 YAML 的路径，只有工具目录允许处理 YAML。
+完成标准：系统配置业务代码不存在直接读写配置 YAML 的路径；数据集 YAML 仅由数据集功能按 YOLO 格式读写。
 
 ---
 
@@ -751,7 +739,7 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 1. `machine.db` 是配置和告警数据的统一 SQLite 数据库，动态配置只允许通过 Repository 写入；
 2. 运行时只消费不可变 `ConfigSnapshot`；
 3. 所有配置更新具备事务、revision、校验和审计；
-4. YAML 只存在于显式 import/export 工具中；
+4. 系统配置只存在于 `storage/machine.db`；数据集 YAML 仅用于 YOLO 数据集格式；
 5. 新增、删除、修改摄像头和规则无需重启即可正确生效；
 6. 密钥、密码和 RTSP 凭据不会通过 API、日志或审计明文泄露；
 7. 历史告警不依赖当前摄像头和规则记录；
