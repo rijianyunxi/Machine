@@ -286,7 +286,7 @@ export default function DatasetsPage() {
                       <h2 id={`dataset-title-${datasetIndex}`} title={d.name}>
                         {d.name}
                       </h2>
-                      <p>{d.images} 张图片 · {d.classes.length} 个类别</p>
+                      <p>{d.images} 张图片 · 训练 {d.splits?.train?.images ?? 0} · 验证 {d.splits?.val?.images ?? 0} · 测试 {d.splits?.test?.images ?? 0} · {d.classes.length} 个类别</p>
                     </div>
                   </div>
                   {d.images ? (
@@ -602,3 +602,5 @@ export default function DatasetsPage() {
     </Page>
   );
 }
+
+

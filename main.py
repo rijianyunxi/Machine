@@ -10,9 +10,7 @@ Active rules:
 
 Usage:
     python main.py                    # Run with default config
-    python main.py --config path/     # Run with custom config directory
-    python main.py --test camera_url  # Test single camera
-"""
+    python main.py --config path/     # Run with custom config directory"""
 
 import argparse
 import os
@@ -324,22 +322,7 @@ def main():
         default="config",
         help="Path to configuration directory (default: config/)",
     )
-    parser.add_argument(
-        "--test",
-        type=str,
-        metavar="RTSP_URL",
-        help="Test single camera connectivity",
-    )
-
     args = parser.parse_args()
-
-    # Test mode
-    if args.test:
-        from scripts.test_camera import test_camera
-
-        success = test_camera(args.test)
-        sys.exit(0 if success else 1)
-
     # Normal mode
     try:
         system = MachineVisionSystem(config_dir=args.config)

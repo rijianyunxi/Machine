@@ -516,7 +516,7 @@ export default function AnnotatePage() {
     >
       <div className="anno-layout" style={{ display: "grid", gridTemplateColumns: "250px 1fr 270px", gap: 14 }}>
         {/* 图片列表 */}
-        <div className="card" style={{ padding: 12, maxHeight: "calc(100vh - 170px)", overflowY: "auto" }}>
+        <div className="card anno-list-card" style={{ padding: 12 }}>
           <div className="card-title" style={{ marginBottom: 8 }}>
             图片 <span className="muted">{images.length}</span>
           </div>
@@ -568,14 +568,15 @@ export default function AnnotatePage() {
         </div>
 
         {/* 画布 */}
-        <div className="card" style={{ padding: 14 }}>
+        <div className="card anno-canvas-card" style={{ padding: 14 }}>
           <div
             id="stage-wrap"
+            className="anno-stage"
             style={{ position: "relative", userSelect: "none", lineHeight: 0 }}
             onMouseDown={onStageMouseDown}
           >
             {img ? (
-              <>
+              <div className="anno-stage-inner">
                 <img
                   ref={imgRef}
                   className="thumb"
@@ -583,7 +584,7 @@ export default function AnnotatePage() {
                   alt={img.file}
                   style={{
                     aspectRatio: "auto",
-                    maxHeight: "66vh",
+                    maxHeight: "calc(100vh - 244px)",
                     width: "auto",
                     maxWidth: "100%",
                     cursor: "crosshair",
@@ -651,7 +652,7 @@ export default function AnnotatePage() {
                     </div>
                   </div>
                 ) : null}
-              </>
+              </div>
             ) : (
               <Empty>未选择图片</Empty>
             )}
@@ -673,7 +674,7 @@ export default function AnnotatePage() {
         </div>
 
         {/* 类别与框列表 */}
-        <div className="stack" style={{ height: "calc(100vh - 170px)" }}>
+        <div className="stack anno-side">
           <div className="card" style={{ padding: 14 }}>
             <div className="card-title" style={{ marginBottom: 8 }}>
               类别（按数字键选择）

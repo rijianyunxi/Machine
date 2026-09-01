@@ -1,6 +1,6 @@
 """Dataset management + online annotation API."""
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from webapp.api.common import get_state
@@ -50,12 +50,13 @@ def set_classes(request: Request, name: str, data: dict):
 
 @router.post("/api/datasets/{name}/images")
 async def upload_images(request: Request, name: str,
-                        images: list[UploadFile] = File(...)):
+                        images: list[UploadFile] = File(...),
+                        split: str = Form("train")):
     files = []
     for f in images:
         files.append((f.filename, await f.read()))
     try:
-        added = get_state(request).datasets.add_images(name, files)
+        added = get_state(request).datasets.add_images(name, files, split)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"added": added}
@@ -131,3 +132,4 @@ def start_prelabel(request: Request, name: str, data: dict):
 @router.get("/api/datasets/{name}/prelabel_status")
 def prelabel_status(request: Request, name: str):
     return get_state(request).datasets.prelabel_status()
+

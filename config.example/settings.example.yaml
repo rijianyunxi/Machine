@@ -67,7 +67,7 @@ database:
 # Logging configuration
 logging:
   level: "INFO"
-  file: "logs/machine_vision.log"
+  file: "storage/logs/machine_vision.log"
   max_size_mb: 50
   backup_count: 5
 

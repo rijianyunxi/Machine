@@ -153,11 +153,17 @@ export interface StorageUsage {
   watermark: "ok" | "yellow" | "red" | string;
 }
 
+export interface DatasetSplitInfo {
+  images: number;
+  labeled: number;
+}
+
 export interface DatasetInfo {
   name: string;
   classes: string[];
   images: number;
   labeled: number;
+  splits?: Partial<Record<"train" | "val" | "test", DatasetSplitInfo>>;
 }
 
 export interface PrelabelStatus {
@@ -247,3 +253,5 @@ export interface CameraTestResult {
   latency_ms?: number;
   error?: string;
 }
+
+

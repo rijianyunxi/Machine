@@ -75,7 +75,6 @@ python -m webapp.server --config config
 - **首次登录后请修改默认密码**：「系统设置 → 面板」。
 - **存储**：告警入 `storage/alerts.db`（SQLite），快照入 `storage/snapshots/`（按日期分目录，
   保留天数在系统设置里调，到期自动清理）；总览页有磁盘水位提示。
-- **没有摄像头也能试**：`python main.py --config config_test`（用本地测试视频跑通全流程）。
 
 ## 内置规则速查
 
@@ -92,13 +91,11 @@ python -m webapp.server --config config
 
 ```
 config/           正式配置（settings.yaml / cameras.yaml / rules.yaml / rule_templates.yaml）
-config_test/      本地开发测试配置（真实监控停用）
 core/             取流 / 检测 / 分析 / 快照
 rules/            规则引擎（判定逻辑 + 模板/规则存储）
 infrastructure/   外部系统适配层（数据库等持久化实现）
 storage/          仅存运行数据：alerts.db / snapshots/ / test_results/
 webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist，已入库）
-scripts/          测试视频生成 / 监控连通性测试 / 训练脚本
 ```
 
 ## 开发说明
@@ -108,4 +105,3 @@ scripts/          测试视频生成 / 监控连通性测试 / 训练脚本
 cd webapp/spa && npm install && npm run build
 ```
 
-设计与优化文档：[PANEL_DESIGN.md](PANEL_DESIGN.md) / [OPTIMIZATION.md](OPTIMIZATION.md)
