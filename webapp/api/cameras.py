@@ -29,7 +29,7 @@ def test_camera_stream(request: Request, data: dict):
 
     if "__KEEP__@" in url:
         cam_id = data.get("camera_id", "")
-        old = next((c.get("rtsp_url", "") for c in state.config.get_cameras()
+        old = next((c.get("rtsp_url", "") for c in state.get_cameras()
                     if c.get("id") == cam_id), "")
         merged = state._merge_keep_password(url, old)
         if "__KEEP__@" in merged:
@@ -84,8 +84,10 @@ def update_camera(request: Request, camera_id: str, data: dict):
 
 
 @router.delete("/api/cameras/{camera_id}")
-def delete_camera(request: Request, camera_id: str):
-    abort_on_value_error(lambda: get_state(request).delete_camera(camera_id))
+def delete_camera(request: Request, camera_id: str, expected_revision: int | None = Query(default=None)):
+    abort_on_value_error(
+        lambda: get_state(request).delete_camera(camera_id, expected_revision=expected_revision)
+    )
     return {"ok": True}
 
 

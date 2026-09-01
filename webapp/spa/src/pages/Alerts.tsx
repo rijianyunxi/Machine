@@ -181,28 +181,35 @@ export default function AlertsPage() {
                         {relTime(a.timestamp)}
                       </div>
                     </td>
-                    <td>
-                      {cams.find((c) => String(c.id) === String(a.camera_id))?.name ??
-                        a.camera_id}
-                    </td>
+                    <td>{a.camera_name || a.camera_id}</td>
                     <td>
                       <Chip text={"R" + String(a.rule_id).padStart(2, "0")} color="blue" />{" "}
                       {a.rule_name}
                     </td>
                     <td className="mono">{a.confidence?.toFixed(2)}</td>
                     <td>
-                      {a.snapshot_path ? (
+                      {a.snapshot_status === "available" && a.snapshot_path ? (
                         <a
                           href={snapUrl(a.snapshot_path)}
                           onClick={(e) => {
                             e.preventDefault();
-                            showImage(snapUrl(a.snapshot_path!), `${a.camera_id} · ${a.rule_name}`);
+                            showImage(
+                              snapUrl(a.snapshot_path!),
+                              `${a.camera_name || a.camera_id} · ${a.rule_name}`,
+                            );
                           }}
                         >
                           查看
                         </a>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className="muted">
+                          {{
+                            none: "无截图",
+                            available: "查看",
+                            cleaned: "已清理",
+                            missing: "文件缺失",
+                          }[a.snapshot_status || (a.snapshot_path ? "missing" : "none")] || "文件缺失"}
+                        </span>
                       )}
                     </td>
                     <td>

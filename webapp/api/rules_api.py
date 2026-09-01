@@ -1,6 +1,8 @@
-"""Online rule configuration API (rules.yaml backed)."""
+"""Online rule configuration API backed by the unified machine.db."""
 
 from fastapi import APIRouter, HTTPException, Request
+
+from infrastructure.persistence import RevisionConflict
 
 from webapp.api.common import get_state
 
@@ -33,6 +35,8 @@ def node_types(request: Request):
 def add_template(request: Request, data: dict):
     try:
         return get_state(request).create_template(data)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -41,14 +45,18 @@ def add_template(request: Request, data: dict):
 def update_template(request: Request, name: str, data: dict):
     try:
         return get_state(request).update_template(name, data)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @router.delete("/api/rules/templates/{name}")
-def delete_template(request: Request, name: str):
+def delete_template(request: Request, name: str, expected_revision: int | None = None):
     try:
-        get_state(request).delete_template(name)
+        get_state(request).delete_template(name, expected_revision=expected_revision)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
@@ -59,6 +67,8 @@ def add_rule(request: Request, data: dict):
     state = get_state(request)
     try:
         return state.add_rule(data)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -68,15 +78,19 @@ def update_rule(request: Request, rule_id: int, data: dict):
     state = get_state(request)
     try:
         return state.update_rule(rule_id, data)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @router.delete("/api/rules/{rule_id}")
-def delete_rule(request: Request, rule_id: int):
+def delete_rule(request: Request, rule_id: int, expected_revision: int | None = None):
     state = get_state(request)
     try:
-        state.delete_rule(rule_id)
+        state.delete_rule(rule_id, expected_revision=expected_revision)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}

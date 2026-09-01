@@ -52,7 +52,7 @@ alert:
 
 # 数据库配置
 database:
-  path: "storage/alerts.db"  # SQLite 告警数据库文件路径
+  path: "storage/machine.db"  # SQLite 配置与告警统一数据库文件路径
   # 超过保留天数的告警记录自动清理
   retention_days: 180  # 告警记录保留天数
 

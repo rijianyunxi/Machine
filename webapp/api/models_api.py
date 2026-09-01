@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 
+from infrastructure.persistence import RevisionConflict
 from webapp.api.common import abort_on_value_error, get_state
 
 router = APIRouter()
@@ -53,6 +54,7 @@ def register_model(request: Request, data: dict):
         file=data.get("file", ""),
         enabled=bool(data.get("enabled", False)),
         confidence_override=data.get("confidence_override"),
+        expected_revision=data.get("expected_revision"),
     ))
 
 
@@ -74,10 +76,12 @@ def reload_model(request: Request, name: str):
 
 
 @router.delete("/api/models/{name}")
-def unregister_model(request: Request, name: str):
+def unregister_model(request: Request, name: str, expected_revision: int | None = None):
     state = get_state(request)
     try:
-        state.unregister_model(name)
+        state.unregister_model(name, expected_revision=expected_revision)
+    except RevisionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}

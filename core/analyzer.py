@@ -1,7 +1,7 @@
 """
 Behavior analyzer - logic-primitive-driven rule evaluation.
 
-Each rule's template (config/rule_templates.yaml) binds to a check LOGIC
+Each rule's template (stored in machine.db) binds to a check LOGIC
 primitive; the analyzer dispatches on that primitive, not the template name:
   presence         - trigger class detected (above min confidence) -> violation
   presence_near    - trigger object near/overlapping a person
@@ -9,26 +9,25 @@ primitive; the analyzer dispatches on that primitive, not the template name:
   graph            - visual canvas node graph stored on the rule itself
                      (rule.graph, evaluated by core/rules_graph.py)
 
-Rule params (class sets, margins, ratios) come from config/rules.yaml, so
+Rule params (class sets, margins, ratios) come from the committed database snapshot, so
 panel edits take effect on the next frame. Class names are matched
 case-insensitively.
 """
 
+import copy
 import threading
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from core.detector import Detection
 from core.rules_graph import evaluate_graph
-from rules.rules_engine import (
+from rules.definitions import (
     LOGIC_ABSENCE_REQUIRED,
     LOGIC_GRAPH,
     LOGIC_PRESENCE,
     LOGIC_PRESENCE_NEAR,
     LOGIC_ZONE_INTRUSION,
     RuleDefinition,
-    get_rules_store,
-    get_template_store,
 )
 from utils.logger import get_logger
 
@@ -304,18 +303,27 @@ RULE_LOGICS = {
 class BehaviorAnalyzer:
     """Evaluates detections against the enabled rules for each camera."""
 
-    def __init__(self, settings: dict, config_dir: str = "config"):
+    def __init__(self, settings: dict, templates: dict):
         self._logger = get_logger("analyzer")
 
         alert_cfg = settings.get("alert", {})
         self._cooldown = alert_cfg.get("cooldown_seconds", 30)
 
-        self._rules = get_rules_store(config_dir)
-        self._templates = get_template_store(config_dir)
+        # Template metadata must come from the committed ConfigSnapshot.
+        # Keeping a YAML fallback here would allow runtime semantics to diverge
+        # from the database-backed rule configuration.
+        if not isinstance(templates, dict):
+            raise ValueError("BehaviorAnalyzer 必须接收数据库配置快照中的 templates")
+        self._templates = copy.deepcopy(templates)
 
         # Cooldown tracking: (camera_id, rule_id) -> last alert timestamp
         self._last_alert: Dict[tuple, float] = {}
         self._lock = threading.Lock()
+
+    def set_templates(self, templates: dict) -> None:
+        """Atomically replace template metadata after a committed snapshot."""
+        with self._lock:
+            self._templates = copy.deepcopy(templates or {})
 
     # ---------- cooldown ----------
 
@@ -348,7 +356,8 @@ class BehaviorAnalyzer:
         params use normalized frame coordinates (e.g. zone intrusion)."""
         violations = []
         for rule in rules:
-            logic = self._templates.logic_of(rule.template)
+            template = self._templates.get(rule.template, {})
+            logic = template.get("logic") if isinstance(template, dict) else None
             check = RULE_LOGICS.get(logic) if logic else None
             if check is None:
                 continue

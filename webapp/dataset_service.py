@@ -101,13 +101,6 @@ class DatasetService:
         labels_dir.mkdir(parents=True, exist_ok=True)
         return images_dir, labels_dir
 
-    def _images_dir(self, name: str) -> Path:
-        images_dir, _ = self._ensure_split(name, "train")
-        return images_dir
-
-    def _labels_dir(self, name: str) -> Path:
-        _, labels_dir = self._ensure_split(name, "train")
-        return labels_dir
 
     # ---------- yaml ----------
 

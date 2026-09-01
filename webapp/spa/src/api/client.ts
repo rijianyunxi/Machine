@@ -1,6 +1,19 @@
 /* API 客户端：对齐旧 app.js 的 api() 语义——
  * JSON/FormData 自动处理、401 弹登录并重试一次、错误统一 throw Error(detail)。 */
 
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export function isConflictError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
+}
+
 type LoginPrompt = () => Promise<boolean>;
 
 let loginPrompt: LoginPrompt | null = null;
@@ -48,7 +61,7 @@ export async function api<T = unknown>(
     } catch {
       /* 非 JSON 错误体 */
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return (await res.json()) as T;
 }

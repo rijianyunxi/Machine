@@ -5,9 +5,11 @@ export interface Camera {
   name: string;
   url: string;
   enabled: boolean;
+  revision: number;
   connected: boolean;
   thread_alive: boolean;
   rules: number[];
+  rule_overrides?: Record<string, Record<string, unknown>>;
   frames_captured?: number | null;
   frame_age?: number | null;
 }
@@ -25,6 +27,7 @@ export interface ParamSpec {
 export interface TemplateSpec {
   label: string;
   logic: string;
+  revision?: number;
   params: ParamSpec[];
 }
 
@@ -43,7 +46,7 @@ export interface GraphEdge {
   to: string;
 }
 
-/** 画布数据（rules.yaml 的 graph 字段） */
+/** 画布数据（数据库 rules.graph_json 字段） */
 export interface RuleGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -74,6 +77,7 @@ export interface NodeTypesResponse {
 
 export interface RuleEntry {
   id: number;
+  revision: number;
   name: string;
   description: string;
   template: string;
@@ -88,6 +92,7 @@ export interface RuleEntry {
 
 export interface ModelInstance {
   name: string;
+  revision: number;
   path: string;
   file_exists: boolean;
   config_enabled: boolean;
@@ -114,15 +119,19 @@ export interface ModelsResponse {
 
 export type AlertStatus = "new" | "confirmed" | "false_positive" | "resolved";
 
+export type SnapshotStatus = "none" | "available" | "cleaned" | "missing";
+
 export interface AlertItem {
   id: number;
   camera_id: string;
+  camera_name?: string | null;
   rule_id: number;
   rule_name: string;
   confidence: number;
   status: AlertStatus;
   timestamp: number;
   snapshot_path?: string | null;
+  snapshot_status?: SnapshotStatus;
   note?: string | null;
 }
 
@@ -204,13 +213,18 @@ export interface SettingKey {
   type: "bool" | "int" | "float" | "str" | string;
   value: unknown;
   desc: string;
+  configured?: boolean;
+}
+
+export interface SettingsSection {
+  label: string;
+  restart_required: boolean;
+  revision: number;
+  keys: SettingKey[];
 }
 
 export interface SettingsResponse {
-  sections: Record<
-    string,
-    { label: string; restart_required: boolean; keys: SettingKey[] }
-  >;
+  sections: Record<string, SettingsSection>;
   pending_restart: Record<string, string[]>;
 }
 

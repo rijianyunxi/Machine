@@ -4,9 +4,9 @@ RuntimeState - thread-safe facade between the web panel and the system.
 The panel never touches MachineVisionSystem internals directly; everything
 goes through this facade so access stays consistent whether the panel runs
 embedded in the main process (system is set) or standalone read-only
-(system is None, config/YAML/DB only).
+(system is None, using the same machine.db).
 
-Config writes flow: validate -> ConfigService (backup + write) -> hot-apply
+Config writes flow: validate -> ConfigRepository transaction -> hot-apply
 to live objects -> report what needs a restart.
 """
 
@@ -16,15 +16,14 @@ import re
 import shutil
 import threading
 import time
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from ruamel.yaml.comments import CommentedMap
-
-from rules.rules_engine import get_rules_store
+from application.config_manager import ConfigManager
+from infrastructure.persistence import AlertDatabase, ConfigRepository, MachineDatabase
 from utils.logger import get_logger
+from utils.passwords import hash_password, is_password_hash
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -73,7 +72,7 @@ SETTINGS_SCHEMA = {
     "database": {
         "label": "数据库",
         "keys": {
-            "path": ("str", "storage/alerts.db", "数据库路径（需重启）"),
+            "path": ("str", "storage/machine.db", "统一数据库路径（固定）"),
             "retention_days": ("int", 180, "告警保留天数"),
         },
         "restart_required": False,
@@ -118,16 +117,21 @@ def _coerce(value, typ):
 
 
 class RuntimeState:
-    def __init__(self, config_dir: str, system=None):
-        self.config_dir = Path(config_dir).resolve()
+    def __init__(self, system=None):
         self.system = system  # MachineVisionSystem when embedded, else None
         self._logger = get_logger("panel.state")
 
-        from webapp.config_service import ConfigService
-
-        self.config = ConfigService(self.config_dir)
-        self.rules_store = get_rules_store(str(self.config_dir))
-
+        # Embedded mode reuses the main process ConfigManager/database.
+        # Standalone mode opens the same fixed machine.db; YAML is imported only
+        # by the explicit tools/import_yaml_config.py migration command.
+        if system is not None and getattr(system, "_config_manager", None) is not None:
+            self.config_manager = system._config_manager
+        else:
+            self._database = MachineDatabase(PROJECT_ROOT / "storage" / "machine.db")
+            self.config_manager = ConfigManager(
+                ConfigRepository(self._database)
+            )
+        self._database = self.config_manager.repository.database
         # Model file validation cache: filename -> {status, classes, error, ...}
         self._model_validations: dict = {}
         self._validating: set = set()
@@ -143,6 +147,7 @@ class RuntimeState:
         self._detector_lock = threading.Lock()
 
         self._ensure_panel_settings()
+        self._migrate_panel_password()
 
     # ------------------------------------------------------------------
     # Components (work in both embedded and standalone mode)
@@ -153,39 +158,33 @@ class RuntimeState:
         if self._db is None:
             from infrastructure.persistence import AlertDatabase
 
-            self._db = AlertDatabase(self.settings())
+            self._db = AlertDatabase(self.settings(), database=self._database)
         return self._db
 
     def settings(self) -> dict:
-        """Live settings: the system's copy when embedded, else from YAML."""
-        if self.system is not None:
-            return self.system._settings
-        return self.config.load("settings.yaml")
+        """Return the last committed runtime settings snapshot."""
+        return copy.deepcopy(self.config_manager.snapshot.settings)
+
+    def get_cameras(self) -> list:
+        """Return active cameras from the unified configuration repository."""
+        return copy.deepcopy(list(self.config_manager.snapshot.cameras))
 
     def _ensure_panel_settings(self):
-        """Make sure settings.yaml has the panel + retention defaults."""
-        current = self.config.load("settings.yaml")
-        needs_defaults = any(
-            not isinstance(current.get(section), dict)
-            or any(key not in (current.get(section) or {})
-                   for key in spec["keys"])
+        """Insert missing panel/settings defaults into machine.db."""
+        defaults = {
+            section: {key: default for key, (_typ, default, _desc) in spec["keys"].items()}
             for section, spec in SETTINGS_SCHEMA.items()
-        )
-        if not needs_defaults:
-            return
+        }
+        self.config_manager.ensure_defaults(defaults)
 
-        def ensure(doc):
-            for section, spec in SETTINGS_SCHEMA.items():
-                sec = doc.setdefault(section, {})
-                if not isinstance(sec, dict):
-                    doc[section] = sec = {}
-                for key, (typ, default, _desc) in spec["keys"].items():
-                    sec.setdefault(key, default)
-            return {s: dict(doc[s]) for s in SETTINGS_SCHEMA if s in doc}
-
-        synced = self.config.update_document("settings.yaml", ensure)
-        if self.system is not None:
-            self.system._settings.update(synced)
+    def _migrate_panel_password(self):
+        """Upgrade a legacy plaintext panel password in-place."""
+        panel = self.config_manager.snapshot.settings.get("panel", {}) or {}
+        password = panel.get("password")
+        if password is not None and not is_password_hash(password):
+            self.config_manager.update_settings(
+                "panel", {"password": hash_password(str(password))},
+            )
 
     # ------------------------------------------------------------------
     # System info / stats
@@ -198,7 +197,7 @@ class RuntimeState:
             "models": self.models_status(),
             "rules": [
                 {"id": r.id, "name": r.name, "enabled": r.enabled}
-                for r in self.rules_store.get_all()
+                for r in self.config_manager.snapshot.rules
             ],
         }
         if self.system is not None:
@@ -246,12 +245,12 @@ class RuntimeState:
     # ------------------------------------------------------------------
 
     def cameras_status(self) -> list:
-        """YAML entries merged with live stream status."""
+        """Database camera entries merged with live stream status."""
         manager = self.system._camera_manager if self.system else None
         live = {cid: s.get_panel_status() for cid, s in manager._cameras.items()} \
             if manager else {}
         out = []
-        for cfg in self.config.get_cameras():
+        for cfg in self.get_cameras():
             cid = cfg.get("id")
             entry = {
                 "id": cid,
@@ -259,7 +258,9 @@ class RuntimeState:
                 # masked for display; edit form leaves it empty to keep as-is
                 "url": self._mask_password(cfg.get("rtsp_url", "")),
                 "rules": cfg.get("rules", []),
+                "rule_overrides": copy.deepcopy(cfg.get("rule_overrides", {}) or {}),
                 "enabled": bool(cfg.get("enabled", True)),
+                "revision": int(cfg.get("revision", 1)),
                 "in_manager": cid in live,
             }
             if cid in live:
@@ -279,6 +280,14 @@ class RuntimeState:
     def _mask_password(url: str) -> str:
         return re.sub(r"(://[^:/@]+:)[^@]+(@)", r"\1****\2", url or "")
 
+    @classmethod
+    def _public_camera(cls, camera: dict) -> dict:
+        """Build a camera DTO that never exposes the stored RTSP credential."""
+        value = copy.deepcopy(camera)
+        if "rtsp_url" in value:
+            value["url"] = cls._mask_password(str(value.pop("rtsp_url") or ""))
+        return value
+
     @staticmethod
     def _merge_keep_password(new_url: str, old_url: str) -> str:
         """Replace the `:__KEEP__@` placeholder with the stored password, so
@@ -296,7 +305,7 @@ class RuntimeState:
         return new_url[:i + 1] + old_pwd + "@" + new_url[i + len(marker):]
 
     def add_camera(self, data: dict) -> dict:
-        cameras = self.config.get_cameras()
+        cameras = self.get_cameras()
         cid = str(data["id"]).strip()
         if not cid:
             raise ValueError("监控 ID 不能为空")
@@ -312,14 +321,20 @@ class RuntimeState:
             "rtsp_url": str(data["rtsp_url"]).strip(),
             "enabled": bool(data.get("enabled", True)),
             "rules": [int(r) for r in data.get("rules", [])],
+            "rule_overrides": copy.deepcopy(data.get("rule_overrides", {}) or {}),
         }
         cameras.append(entry)
-        self.config.save_cameras(cameras)
-        self._apply_camera_to_manager(entry)
-        return entry
+        snapshot = self.config_manager.save_cameras(cameras)
+        saved = next(c for c in snapshot.cameras if c.get("id") == cid)
+        self._apply_camera_to_manager(dict(saved))
+        return self._public_camera(dict(saved))
 
     def update_camera(self, camera_id: str, data: dict) -> dict:
-        cameras = self.config.get_cameras()
+        data = dict(data or {})
+        expected_revision = data.pop("expected_revision", None)
+        if expected_revision is not None:
+            expected_revision = int(expected_revision)
+        cameras = self.get_cameras()
         target = next((c for c in cameras if c.get("id") == camera_id), None)
         if target is None:
             raise ValueError(f"监控不存在: {camera_id}")
@@ -338,19 +353,29 @@ class RuntimeState:
             target["rtsp_url"] = new_url
         if "rules" in data:
             target["rules"] = [int(r) for r in data["rules"]]
+        if "rule_overrides" in data:
+            target["rule_overrides"] = copy.deepcopy(data.get("rule_overrides") or {})
         if "enabled" in data:
             target["enabled"] = bool(data["enabled"])
 
-        self.config.save_cameras(cameras)
-        self._apply_camera_to_manager(target, url_changed=url_changed)
-        return target
+        snapshot = self.config_manager.save_cameras(cameras, expected_revisions={
+            camera_id: (int(expected_revision) if expected_revision is not None
+                        else int(target.get("revision", 0)))
+        })
+        saved = next(c for c in snapshot.cameras if c.get("id") == camera_id)
+        self._apply_camera_to_manager(dict(saved), url_changed=url_changed)
+        return self._public_camera(dict(saved))
 
-    def delete_camera(self, camera_id: str):
-        cameras = self.config.get_cameras()
+    def delete_camera(self, camera_id: str, expected_revision: int | None = None):
+        cameras = self.get_cameras()
         remaining = [c for c in cameras if c.get("id") != camera_id]
         if len(remaining) == len(cameras):
             raise ValueError(f"相机不存在: {camera_id}")
-        self.config.save_cameras(remaining)
+        expected = (expected_revision if expected_revision is not None else
+                    next(c for c in cameras if c.get("id") == camera_id).get("revision"))
+        self.config_manager.save_cameras(remaining, expected_revisions={
+            camera_id: int(expected)
+        })
         if self.system is not None:
             self.system._camera_manager.remove_camera(camera_id)
 
@@ -362,13 +387,13 @@ class RuntimeState:
         if stream is None:
             raise ValueError(f"相机未在运行: {camera_id}")
         manager.remove_camera(camera_id)
-        for cfg in self.config.get_cameras():
+        for cfg in self.get_cameras():
             if cfg.get("id") == camera_id:
                 self._apply_camera_to_manager(cfg, url_changed=True)
                 break
 
     def _apply_camera_to_manager(self, entry: dict, url_changed: bool = False):
-        """Mirror a YAML camera entry into the live CameraManager (hot apply)."""
+        """Mirror a database camera entry into the live CameraManager (hot apply)."""
         if self.system is None:
             return
         manager = self.system._camera_manager
@@ -404,62 +429,87 @@ class RuntimeState:
     # ------------------------------------------------------------------
 
     def get_settings(self) -> dict:
-        """Schema-shaped settings for the settings page."""
-        raw = self.config.load("settings.yaml")
+        """Schema-shaped settings for the settings page, with secrets redacted."""
+        raw = self.settings()
         out = {}
+        revisions = self.config_manager.repository.get_section_revisions()
+        sensitive = {("llm", "api_key"), ("panel", "password")}
         for section, spec in SETTINGS_SCHEMA.items():
             sec = raw.get(section, {}) or {}
-            out[section] = {
-                "label": spec["label"],
-                "restart_required": spec["restart_required"],
-                "keys": [
-                    {
-                        "key": key,
-                        "type": typ,
-                        "desc": desc,
-                        "value": sec.get(key, default),
-                    }
-                    for key, (typ, default, desc) in spec["keys"].items()
-                ],
-            }
+            keys = []
+            for key, (typ, default, desc) in spec["keys"].items():
+                is_sensitive = (section, key) in sensitive
+                value = sec.get(key, default)
+                item = {"key": key, "type": typ, "desc": desc,
+                        "value": "" if is_sensitive else value}
+                if is_sensitive:
+                    item["configured"] = bool(value)
+                keys.append(item)
+            out[section] = {"label": spec["label"],
+                          "restart_required": spec["restart_required"],
+                          "revision": revisions.get(section, 1),
+                          "keys": keys}
         return out
 
-    def update_settings(self, section: str, values: dict) -> dict:
+    def update_settings(self, section: str, values: dict, expected_revision: int | None = None) -> dict:
         if section not in SETTINGS_SCHEMA:
             raise ValueError(f"未知配置段: {section}")
         spec = SETTINGS_SCHEMA[section]
         clean = {}
+        sensitive = {"api_key", "password"}
+        clear_keys = {
+            key[len("clear_"):]
+            for key, value in values.items()
+            if key.startswith("clear_") and bool(value)
+        }
+        # A clear_<secret> flag is an explicit destructive action.  The flag
+        # itself is not a persisted setting, so translate it into an empty
+        # value before processing ordinary fields.  This also supports a
+        # request that only contains {"clear_api_key": true}.
+        for key in clear_keys:
+            if key in sensitive and key in spec["keys"]:
+                clean[key] = ""
         for key, value in values.items():
+            if key.startswith("clear_"):
+                continue
             if key not in spec["keys"]:
                 continue
-            typ, default, _ = spec["keys"][key]
+            # Empty secret fields mean keep current value unless an explicit
+            # clear_<secret> flag was supplied.  An explicit clear flag wins
+            # even if the request also contains an empty secret field.
+            if key in sensitive and key in clear_keys:
+                clean[key] = ""
+                continue
+            if key in sensitive and (value is None or str(value) == ""):
+                continue
+            typ, _default, _desc = spec["keys"][key]
             try:
                 clean[key] = _coerce(value, typ)
             except (TypeError, ValueError):
                 raise ValueError(f"{section}.{key} 类型错误，期望 {typ}")
-            if section == "logging" and key == "level" \
-                    and str(clean[key]).upper() not in ALLOWED_LOG_LEVELS:
+            if section == "logging" and key == "level" and str(clean[key]).upper() not in ALLOWED_LOG_LEVELS:
                 raise ValueError(f"日志级别需为 {sorted(ALLOWED_LOG_LEVELS)}")
 
-        self.config.update_section("settings.yaml", section, clean)
+        if section == "panel" and "password" in clean and clean["password"]:
+            clean["password"] = hash_password(clean["password"])
+        _merged, snapshot = self.config_manager.update_settings(
+            section, clean, expected_revision=expected_revision
+        )
         restart_required = spec["restart_required"] and bool(clean)
         self._hot_apply_settings(section, clean)
-
-        # keep the system's in-memory copy in sync
-        if self.system is not None:
-            self.system._settings.setdefault(section, {}).update(clean)
         if not restart_required:
             with self._pending_lock:
                 self._pending_restart.pop(section, None)
         else:
             with self._pending_lock:
                 self._pending_restart[section] = True
-        return {
-            "applied": bool(clean),
-            "restart_required": restart_required,
-            "values": clean,
-        }
-
+        # Never echo secrets (plaintext or password hashes) in the write response.
+        safe_values = dict(clean)
+        for key in sensitive:
+            if key in safe_values:
+                safe_values[key] = ""
+        return {"applied": bool(clean), "restart_required": restart_required,
+                "values": safe_values, "revision": snapshot.revision}
     def _hot_apply_settings(self, section: str, values: dict):
         if self.system is None or not values:
             return
@@ -502,6 +552,8 @@ class RuntimeState:
 
     def _hot_apply_model_entry(self, entry: dict):
         """Sync one model entry (thresholds/enabled) to the live registry."""
+        if self.system is None:
+            return
         detector = self.system._detector
         name = entry.get("name")
         if not name:
@@ -569,6 +621,7 @@ class RuntimeState:
             exists, display = self._model_path(name, m.get("path", ""))
             status = {
                 "name": name,
+                "revision": int(m.get("revision", 1)),
                 "path": display,
                 "file_exists": exists is not None,
                 "config_enabled": bool(m.get("enabled", True)),
@@ -593,6 +646,12 @@ class RuntimeState:
                 status.update({"loaded": False, "device": None, "classes": {}})
             out.append(status)
         return out
+
+    def models_status_entry(self, name: str, entry: dict | None = None) -> dict:
+        for item in self.models_status():
+            if item.get("name") == name:
+                return item
+        return dict(entry or {"name": name})
 
     def model_files(self) -> list:
         """*.pt files under models/ + registration/validation state."""
@@ -664,47 +723,44 @@ class RuntimeState:
             path.unlink()
         self._model_validations.pop(filename, None)
 
-    def register_model(self, name: str, file: str, enabled: bool = False,
-                       confidence_override=None):
-        if not re.fullmatch(r"[\w\-]+", name or ""):
-            raise ValueError("模型名称只允许字母/数字/下划线/连字符")
-        def mutate(doc):
-            models = doc.setdefault("model", {}).setdefault("models", [])
-            if any(m.get("name") == name for m in models):
-                raise ValueError(f"模型名称已存在: {name}")
-            entry = CommentedMap()
-            entry["name"] = name
-            entry["path"] = f"models/{file}"
-            entry["enabled"] = bool(enabled)
-            if confidence_override is not None:
-                entry["confidence_override"] = float(confidence_override)
-            models.append(entry)
-            return dict(entry), models
+    def _model_revision(self) -> int | None:
+        return self.config_manager.repository.get_section_revisions().get("model")
 
-        entry, models = self.config.update_document("settings.yaml", mutate)
-        if self.system is not None:
-            self.system._settings.setdefault("model", {})["models"] = models
+    def register_model(self, name: str, file: str, enabled: bool = False,
+                       confidence_override=None, expected_revision: int | None = None):
+        if not re.fullmatch(r"[\w\-]+", name or ""):
+            raise ValueError("模型名称只能使用字母/数字/下划线/连字符")
+        entry = {"name": name, "path": f"models/{file}", "enabled": bool(enabled)}
+        if confidence_override is not None:
+            entry["confidence_override"] = float(confidence_override)
+        if expected_revision is not None:
+            current = self._model_revision() or 0
+            if int(expected_revision) != current:
+                from infrastructure.persistence import RevisionConflict
+                raise RevisionConflict("settings:model", current)
+        result, _snapshot = self.config_manager.create_model(entry)
         if enabled:
-            self._hot_apply_model_entry(entry)
-        return entry
+            self._hot_apply_model_entry(result)
+        return result
 
     def update_model(self, name: str, data: dict):
-        def mutate(doc):
-            models = doc.get("model", {}).get("models", [])
-            target = next((m for m in models if m.get("name") == name), None)
-            if target is None:
-                raise ValueError(f"模型未注册: {name}")
-            if "confidence_override" in data and data["confidence_override"] is not None:
-                target["confidence_override"] = float(data["confidence_override"])
-            if "enabled" in data:
-                target["enabled"] = bool(data["enabled"])
-            return dict(target), models
-
-        target, models = self.config.update_document("settings.yaml", mutate)
-        if self.system is not None:
-            self.system._settings.setdefault("model", {})["models"] = models
+        data = dict(data or {})
+        expected_revision = data.pop("expected_revision", None)
+        if expected_revision is not None:
+            expected_revision = int(expected_revision)
+        fields = {}
+        if "confidence_override" in data:
+            value = data["confidence_override"]
+            fields["confidence_override"] = None if value is None else float(value)
+        if "enabled" in data:
+            fields["enabled"] = bool(data["enabled"])
+        if not fields:
+            raise ValueError("没有可更新的模型字段")
+        target, _snapshot = self.config_manager.update_model(
+            name, fields, expected_revision=expected_revision
+        )
         self._hot_apply_model_entry(target)
-        return target
+        return self.models_status_entry(name, target)
 
     def reload_model(self, name: str):
         if self.system is None:
@@ -722,28 +778,23 @@ class RuntimeState:
             name=f"model-load-{name}", daemon=True,
         ).start()
 
-    def unregister_model(self, name: str):
-        def mutate(doc):
-            models = doc.get("model", {}).get("models", [])
-            remaining = [m for m in models if m.get("name") != name]
-            if len(remaining) == len(models):
-                raise ValueError(f"模型未注册: {name}")
-            doc["model"]["models"] = remaining
-            return remaining
-
-        remaining = self.config.update_document("settings.yaml", mutate)
+    def unregister_model(self, name: str, expected_revision: int | None = None):
+        if expected_revision is None:
+            target = next((m for m in self.settings().get("model", {}).get("models", [])
+                           if m.get("name") == name), None)
+            expected_revision = target.get("revision") if target else None
+        self.config_manager.delete_model(name, expected_revision=expected_revision)
         if self.system is not None:
-            self.system._settings.setdefault("model", {})["models"] = remaining
             self.system._detector.unload_model(name)
 
     # ------------------------------------------------------------------
-    # Rules CRUD (rules.yaml via shared RulesStore)
+    # Rules CRUD (unified machine.db repository)
     # ------------------------------------------------------------------
 
     def rules_list(self) -> list:
-        rules = self.rules_store.get_all()
+        rules = list(self.config_manager.snapshot.rules)
         camera_usage = {}
-        for cam in self.config.get_cameras():
+        for cam in self.get_cameras():
             for rid in cam.get("rules", []) or []:
                 camera_usage.setdefault(int(rid), []).append(cam.get("id"))
         model_classes = {}
@@ -760,6 +811,7 @@ class RuntimeState:
         for r in rules:
             entry = {
                 "id": r.id, "name": r.name, "description": r.description,
+                "revision": int(r.revision),
                 "template": r.template, "models": r.models, "params": r.params,
                 "severity": r.severity, "enabled": r.enabled,
                 "cameras": camera_usage.get(r.id, []),
@@ -791,13 +843,13 @@ class RuntimeState:
         return out
 
     def add_rule(self, data: dict) -> dict:
-        from rules.rules_engine import RuleDefinition
+        from rules.definitions import RuleDefinition
 
         template = data.get("template")
         if template not in self.template_specs():
             raise ValueError(f"未知模板: {template}")
         rule = RuleDefinition(
-            id=int(data.get("id") or self.rules_store.next_free_id()),
+            id=int(data.get("id") or self.config_manager.repository.next_rule_id()),
             name=str(data.get("name") or f"rule_{data.get('id')}"),
             description=str(data.get("description", "")),
             template=template,
@@ -807,24 +859,33 @@ class RuntimeState:
             severity=int(data.get("severity", 2)),
             enabled=bool(data.get("enabled", True)),
         )
-        self.rules_store.add(rule)
-        return {"id": rule.id}
+        _saved, revision, _snapshot = self.config_manager.add_rule({
+            "id": rule.id, "name": rule.name, "description": rule.description,
+            "category": rule.category, "template": rule.template,
+            "models": rule.models, "params": rule.params, "graph": rule.graph,
+            "severity": rule.severity, "enabled": rule.enabled,
+        })
+        return {"id": rule.id, "revision": int(rule.revision)}
 
     def update_rule(self, rule_id: int, fields: dict) -> dict:
-        self.rules_store.update(rule_id, fields)
-        return {"id": rule_id}
+        fields = dict(fields or {})
+        expected_revision = fields.pop("expected_revision", None)
+        if expected_revision is not None:
+            expected_revision = int(expected_revision)
+        rule, _revision, _snapshot = self.config_manager.update_rule(
+            rule_id, fields, expected_revision=expected_revision
+        )
+        return {"id": rule_id, "revision": int(rule.revision)}
 
-    def delete_rule(self, rule_id: int):
-        usage = [c["id"] for c in self.config.get_cameras()
+    def delete_rule(self, rule_id: int, expected_revision: int | None = None):
+        usage = [c["id"] for c in self.get_cameras()
                  if rule_id in (c.get("rules", []) or [])]
         if usage:
             raise ValueError(f"规则仍被相机使用: {', '.join(usage)}，请先移除引用")
-        self.rules_store.delete(rule_id)
+        self.config_manager.delete_rule(rule_id, expected_revision=expected_revision)
 
     def template_specs(self) -> dict:
-        from rules.rules_engine import get_template_store
-
-        return get_template_store(str(self.config_dir)).specs()
+        return copy.deepcopy(self.config_manager.snapshot.templates)
 
     def node_types(self) -> dict:
         """可视化画布节点注册表（画布编辑器据此生成交互与参数表单）。"""
@@ -833,39 +894,35 @@ class RuntimeState:
         return copy.deepcopy(NODE_TYPES)
 
     def template_logics(self) -> dict:
-        from rules.rules_engine import get_template_logics
+        from rules.definitions import template_logics
 
-        return get_template_logics()
+        return template_logics()
 
     def create_template(self, data: dict) -> dict:
-        from rules.rules_engine import get_template_store
-
         name = str(data.get("name") or "").strip()
-        get_template_store(str(self.config_dir)).add(
-            name,
-            {"label": data.get("label"), "logic": data.get("logic"),
-             "params": data.get("params") or []},
+        self.config_manager.create_template(
+            name, {"label": data.get("label"), "logic": data.get("logic"),
+                   "params": data.get("params") or []}
         )
         return {"name": name}
 
     def update_template(self, name: str, data: dict) -> dict:
-        from rules.rules_engine import get_template_store
-
-        get_template_store(str(self.config_dir)).update(
-            name,
-            {"label": data.get("label"), "logic": data.get("logic"),
-             "params": data.get("params") or []},
+        expected_revision = data.get("expected_revision")
+        if expected_revision is not None:
+            expected_revision = int(expected_revision)
+        self.config_manager.update_template(
+            name, {"label": data.get("label"), "logic": data.get("logic"),
+                   "params": data.get("params") or []},
+            expected_revision=expected_revision,
         )
         return {"name": name}
 
-    def delete_template(self, name: str):
-        from rules.rules_engine import get_template_store
-
-        usage = [f"R{r.id}" for r in self.rules_store.get_all()
+    def delete_template(self, name: str, expected_revision: int | None = None):
+        usage = [f"R{r.id}" for r in self.config_manager.snapshot.rules
                  if r.template == name]
         if usage:
             raise ValueError(f"模板仍被规则使用: {', '.join(usage)}，请先删除或改绑对应规则")
-        get_template_store(str(self.config_dir)).delete(name)
+        self.config_manager.delete_template(name, expected_revision=expected_revision)
 
     # ------------------------------------------------------------------
     # Snapshots / storage
@@ -945,7 +1002,7 @@ class RuntimeState:
                     add(img, rule_dir.name, f"{day_dir.name}/{rule_dir.name}/{img.name}")
             for img in day_dir.glob("*.jpg"):
                 if id2name is None:
-                    id2name = {r.id: r.name for r in self.rules_store.get_all()}
+                    id2name = {r.id: r.name for r in self.config_manager.snapshot.rules}
                 label = self._flat_rule_label(img.name, id2name)
                 if rule and label != rule:
                     continue
@@ -993,6 +1050,7 @@ class RuntimeState:
         """Delete snapshot day-directories strictly before before_date."""
         base = self.snapshots_dir()
         deleted = 0
+        deleted_dirs = []
         if not base.exists():
             return 0
         import shutil
@@ -1000,6 +1058,8 @@ class RuntimeState:
         for day_dir in self._snapshot_day_dirs(base):
             if day_dir.name < before_date:
                 shutil.rmtree(day_dir, ignore_errors=True)
+                if not day_dir.exists():
+                    deleted_dirs.append(day_dir)
                 # drop matching thumbnail-cache copies
                 thumbs = base / ".thumbs"
                 if thumbs.is_dir():
@@ -1007,6 +1067,8 @@ class RuntimeState:
                         if wdir.is_dir():
                             shutil.rmtree(wdir / day_dir.name, ignore_errors=True)
                 deleted += 1
+        if deleted_dirs:
+            self.db.mark_snapshots_cleaned(deleted_dirs)
         return deleted
 
     # ------------------------------------------------------------------

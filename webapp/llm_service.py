@@ -1,8 +1,9 @@
 """
 LLM (OpenAI-compatible chat) client for AI-assisted labeling.
 
-Config lives in settings.yaml `llm` section: enabled / base_url / api_key /
-model. httpx is already a transitive dependency (ultralytics), so no new deps.
+Config lives in the unified machine.db through RuntimeState: enabled /
+base_url / api_key / model. httpx is already a transitive dependency
+(ultralytics), so no new deps.
 """
 
 import base64

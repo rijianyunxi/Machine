@@ -2,7 +2,7 @@
 YOLOv8 detection engine - multi-model registry.
 
 Loads multiple YOLOv8 models (PPE, smoking, user-imported...) from
-config/settings.yaml and merges their results into Detection objects.
+the committed machine.db model settings and merges their results into Detection objects.
 
 Supports runtime management from the web panel:
   - per-model threshold updates (applied on the next inference)
@@ -231,7 +231,7 @@ class MultiDetector:
 
         if not models_list:
             raise RuntimeError(
-                "No models configured: add a 'model.models' list to config/settings.yaml"
+                "No models configured: import or register models in machine.db"
             )
 
         for m in models_list:
@@ -270,7 +270,7 @@ class MultiDetector:
 
         if not self._detectors:
             raise RuntimeError(
-                "No detection models loaded - check model paths in config/settings.yaml"
+                "No detection models loaded - check model paths in machine.db"
             )
 
         self._logger.info(

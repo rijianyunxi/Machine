@@ -1,5 +1,5 @@
 """
-Retention: snapshot / alert-DB / test-result pruning.
+Retention: snapshot / unified machine.db alert / test-result pruning.
 
 Runs once at startup (to catch up after downtime) and then daily at 03:00,
 plus on demand from the panel.

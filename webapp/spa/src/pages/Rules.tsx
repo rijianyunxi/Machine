@@ -243,6 +243,7 @@ export default function RulesPage() {
   const [nodeTypesFailed, setNodeTypesFailed] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
+  const [editingRevision, setEditingRevision] = useState<number | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   const [form, setForm] = useState<RuleForm | null>(null);
   const toast = useToast();
@@ -313,6 +314,7 @@ export default function RulesPage() {
   /* 编辑存量规则：template=graph 直接进画布，老模板保持"何时告警"表单 */
   const openRuleEdit = async (id: number | null) => {
     setEditing(id);
+    setEditingRevision(rules?.find((x) => x.id === id)?.revision ?? null);
     if (!rules?.length || !Object.keys(templates).length) await refresh();
     const r = rules?.find((x) => x.id === id);
     const template = r?.template || "graph";
@@ -334,6 +336,7 @@ export default function RulesPage() {
   /* 从预设画廊新建：template 固定 graph，画布取预置图（深拷贝） */
   const openRuleFromPreset = (p: GraphPreset) => {
     setEditing(null);
+    setEditingRevision(null);
     setForm({
       ...baseForm(),
       logic: "graph",
@@ -374,6 +377,9 @@ export default function RulesPage() {
         severity: +form.severity,
         enabled: form.enabled,
         graph: legacyParams ? undefined : form.graph,
+        ...(editing && editingRevision != null
+          ? { expected_revision: editingRevision }
+          : {}),
       };
       try {
         if (editing) await api(`/api/rules/${editing}`, { method: "PUT", body });
@@ -382,7 +388,13 @@ export default function RulesPage() {
         setRuleOpen(false);
         refresh();
       } catch (e) {
-        toast((e as Error).message, false);
+        if ((e as { status?: number }).status === 409) {
+          toast("配置已被其他请求修改，请刷新后重试", false);
+          await refresh();
+          setRuleOpen(false);
+        } else {
+          toast((e as Error).message, false);
+        }
       }
       return;
     }
@@ -401,6 +413,9 @@ export default function RulesPage() {
       params: form.params,
       severity: +form.severity,
       enabled: form.enabled,
+      ...(editing && editingRevision != null
+        ? { expected_revision: editingRevision }
+        : {}),
     };
     try {
       if (editing) await api(`/api/rules/${editing}`, { method: "PUT", body });
@@ -409,28 +424,47 @@ export default function RulesPage() {
       setRuleOpen(false);
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+        setRuleOpen(false);
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   });
 
   const toggleRule = async (id: number, enable: boolean) => {
     try {
-      await api(`/api/rules/${id}`, { method: "PUT", body: { enabled: enable } });
+      const revision = rules?.find((r) => r.id === id)?.revision;
+      await api(`/api/rules/${id}`, { method: "PUT", body: { enabled: enable, expected_revision: revision } });
       toast("已生效");
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   };
 
   const delRule = async (id: number) => {
     if (!(await confirm(`删除规则 R${id}？历史告警记录会保留。`))) return;
     try {
-      await api(`/api/rules/${id}`, { method: "DELETE" });
+      const revision = rules?.find((r) => r.id === id)?.revision;
+      const suffix = revision == null ? "" : `?expected_revision=${revision}`;
+      await api(`/api/rules/${id}${suffix}`, { method: "DELETE" });
       toast("已删除");
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   };
 

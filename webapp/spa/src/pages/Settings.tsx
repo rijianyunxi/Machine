@@ -75,9 +75,15 @@ export default function SettingsPage() {
         body[k.key] = v;
       }
     }
+    const sectionRevision = data?.sections[section]?.revision;
+    if (sectionRevision != null) body.expected_revision = sectionRevision;
     setSavingSec(section);
     try {
-      const r = await api<{ restart_required: boolean; values: Record<string, unknown> }>(
+      const r = await api<{
+        restart_required: boolean;
+        values: Record<string, unknown>;
+        revision: number;
+      }>(
         `/api/settings/${section}`,
         { method: "PUT", body },
       );
@@ -91,7 +97,13 @@ export default function SettingsPage() {
       await refresh();
       return true;
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        setValues({});
+        await refresh();
+      } else {
+        toast((e as Error).message, false);
+      }
       return false;
     } finally {
       setSavingSec(null);
@@ -121,7 +133,7 @@ export default function SettingsPage() {
 
   if (!data) {
     return (
-      <Page title="系统设置" subtitle="所有配置落盘 settings.yaml 并尽可能热生效；改动前自动备份">
+      <Page title="系统设置" subtitle="配置统一保存到 machine.db 并尽可能热生效；改动前请先完成数据库备份">
         <div className="card">
           <Empty>加载中…</Empty>
         </div>
@@ -138,7 +150,7 @@ export default function SettingsPage() {
   return (
     <Page
       title="系统设置"
-      subtitle="所有配置落盘 settings.yaml 并尽可能热生效；改动前自动备份"
+      subtitle="所有配置保存到 machine.db 并尽可能热生效"
     >
       {pend.length ? (
         <div className="banner">
@@ -198,7 +210,10 @@ export default function SettingsPage() {
                   />
                 ) : (
                   <input
-                    type={section === "llm" && k.key === "api_key" ? "password" : "text"}
+                    type={(section === "llm" && k.key === "api_key") ||
+                          (section === "panel" && k.key === "password")
+                          ? "password"
+                          : "text"}
                     style={{ width: "100%" }}
                     value={String(values[section]?.[k.key] ?? "")}
                     onChange={(e) => setVal(section, k.key, e.target.value)}

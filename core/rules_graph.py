@@ -14,6 +14,8 @@ Evaluation state (duration timers / alert edge memory) is kept per
 conditions independent when the same rule is assigned to multiple cameras.
 """
 
+import copy
+import math
 from typing import Dict, List, Optional
 
 from core.detector import Detection
@@ -132,6 +134,153 @@ NODE_TYPES: Dict[str, dict] = {
         "params": [],
     },
 }
+
+
+def _graph_number(value, *, label: str, integer: bool = False):
+    if isinstance(value, bool):
+        raise ValueError(f"graph 参数 {label} 必须是数字")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"graph 参数 {label} 必须是数字") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"graph 参数 {label} 必须是有限数字")
+    if integer:
+        if not number.is_integer():
+            raise ValueError(f"graph 参数 {label} 必须是整数")
+        return int(number)
+    return number
+
+
+def _validate_graph_value(spec: dict, value, *, label: str):
+    ptype = spec.get("type")
+    if ptype in ("float", "int"):
+        number = _graph_number(value, label=label, integer=ptype == "int")
+        if spec.get("min") is not None and number < spec["min"]:
+            raise ValueError(f"graph 参数 {label} 不能小于 {spec['min']}")
+        if spec.get("max") is not None and number > spec["max"]:
+            raise ValueError(f"graph 参数 {label} 不能大于 {spec['max']}")
+        return number
+    if ptype == "string[]":
+        if isinstance(value, str):
+            value = [x.strip() for x in value.split(",") if x.strip()]
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"graph 参数 {label} 必须是字符串列表")
+        result = []
+        for item in value:
+            text = str(item).strip()
+            if not text:
+                raise ValueError(f"graph 参数 {label} 不能包含空字符串")
+            result.append(text)
+        return result
+    if ptype == "zones":
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"graph 参数 {label} 必须是区域列表")
+        result = []
+        for zone in value:
+            if not isinstance(zone, dict):
+                raise ValueError(f"graph 参数 {label} 的区域必须是对象")
+            normalized = copy.deepcopy(zone)
+            for key in ("x", "y", "w", "h"):
+                if key not in zone:
+                    raise ValueError(f"graph 参数 {label} 的区域缺少 {key}")
+                normalized[key] = _graph_number(zone[key], label=f"{label}.{key}")
+            if (normalized["x"] < 0 or normalized["y"] < 0
+                    or normalized["w"] <= 0 or normalized["h"] <= 0
+                    or normalized["x"] + normalized["w"] > 1
+                    or normalized["y"] + normalized["h"] > 1):
+                raise ValueError(f"graph 参数 {label} 的区域必须位于 0~1 归一化画面内")
+            result.append(normalized)
+        return result
+    raise ValueError(f"graph 节点参数类型不支持: {ptype}")
+
+
+def validate_graph(graph: dict) -> dict:
+    """Validate and normalize a graph before it enters the runtime snapshot."""
+    if not isinstance(graph, dict):
+        raise ValueError("规则 graph 必须是对象")
+    raw_nodes = graph.get("nodes")
+    raw_edges = graph.get("edges", [])
+    if not isinstance(raw_nodes, list) or not raw_nodes:
+        raise ValueError("graph 至少需要一个节点")
+    if not isinstance(raw_edges, list):
+        raise ValueError("graph edges 必须是列表")
+
+    normalized = copy.deepcopy(graph)
+    nodes = []
+    node_map = {}
+    for node in raw_nodes:
+        if not isinstance(node, dict):
+            raise ValueError("graph 节点必须是对象")
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("graph 节点 id 必须是非空字符串")
+        node_id = node_id.strip()
+        if node_id in node_map:
+            raise ValueError(f"graph 节点 id 重复: {node_id}")
+        node_type = node.get("type")
+        if node_type not in NODE_TYPES:
+            raise ValueError(f"graph 存在未知节点类型: {node_type}")
+        params = node.get("params", {})
+        if not isinstance(params, dict):
+            raise ValueError(f"graph 节点 {node_id} params 必须是对象")
+        schema = NODE_TYPES[node_type]
+        param_specs = {p["name"]: p for p in schema.get("params", [])}
+        unknown = sorted(set(params) - set(param_specs))
+        if unknown:
+            raise ValueError(f"graph 节点 {node_id} 包含未知参数: {', '.join(unknown)}")
+        clean_params = {name: copy.deepcopy(spec.get("default"))
+                        for name, spec in param_specs.items()}
+        for name, value in params.items():
+            clean_params[name] = _validate_graph_value(
+                param_specs[name], value, label=f"{node_id}.{name}"
+            )
+        clean_node = copy.deepcopy(node)
+        clean_node["id"] = node_id
+        clean_node["params"] = clean_params
+        nodes.append(clean_node)
+        node_map[node_id] = clean_node
+
+    edges = []
+    edge_set = set()
+    incoming = {node_id: [] for node_id in node_map}
+    outgoing = {node_id: [] for node_id in node_map}
+    for edge in raw_edges:
+        if not isinstance(edge, dict):
+            raise ValueError("graph 边必须是对象")
+        src, dst = edge.get("from"), edge.get("to")
+        if src not in node_map or dst not in node_map:
+            raise ValueError(f"graph 边引用不存在的节点: {src} -> {dst}")
+        if src == dst:
+            raise ValueError(f"graph 不允许自环: {src}")
+        key = (src, dst)
+        if key in edge_set:
+            raise ValueError(f"graph 存在重复连线: {src} -> {dst}")
+        edge_set.add(key)
+        incoming[dst].append(src)
+        outgoing[src].append(dst)
+        edges.append({"from": src, "to": dst})
+
+    for node_id, node in node_map.items():
+        expected = int(NODE_TYPES[node["type"]]["inputs"])
+        actual = len(incoming[node_id])
+        if actual != expected:
+            raise ValueError(
+                f"graph 节点 {node_id}({node['type']}) 需要 {expected} 个输入，实际 {actual} 个"
+            )
+    alerts = [node_id for node_id, node in node_map.items() if node["type"] == "alert"]
+    if not alerts:
+        raise ValueError("graph 必须包含 alert 输出节点")
+    if any(outgoing[node_id] for node_id in alerts):
+        raise ValueError("alert 节点不能再连接到其他节点")
+
+    # Reuse the same strict topological algorithm as runtime evaluation.
+    order, _ = _topo_sort(node_map, edges)
+    if order is None:
+        raise ValueError("graph 存在环，无法执行")
+    normalized["nodes"] = nodes
+    normalized["edges"] = edges
+    return normalized
 
 # 跨帧记忆：(camera_id, rule_id, node_id) -> duration 连续为真起点
 _duration_since: Dict[tuple, float] = {}

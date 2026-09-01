@@ -12,9 +12,11 @@ import { Chip, ConnectedBadge, Empty, useBusy } from "../ui/badges";
 /* RTSP 分段字段（编辑态的表单值） */
 interface CamForm {
   id: string;
+  revision?: number;
   name: string;
   enabled: boolean;
   rules: number[];
+  ruleOverridesText: string;
   mode: "build" | "raw";
   vendor: "dahua" | "hikvision" | "generic";
   ip: string;
@@ -32,6 +34,7 @@ const EMPTY_FORM: CamForm = {
   name: "",
   enabled: true,
   rules: [],
+  ruleOverridesText: "{}",
   mode: "build",
   vendor: "dahua",
   ip: "",
@@ -155,6 +158,7 @@ export default function CamerasPage() {
       name: cam?.name || "",
       enabled: cam ? cam.enabled : true,
       rules: cam ? cam.rules || [] : [],
+      ruleOverridesText: JSON.stringify(cam?.rule_overrides || {}, null, 2),
     };
     const raw = cam?.url || "";
     const masked = raw.includes("****");
@@ -221,12 +225,25 @@ export default function CamerasPage() {
       toast(form.mode === "raw" ? "请填写地址" : "请填写监控 IP", false);
       return;
     }
+    let rule_overrides: Record<string, Record<string, unknown>>;
+    try {
+      const parsed = JSON.parse(form.ruleOverridesText.trim() || "{}");
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("必须是 JSON 对象");
+      }
+      rule_overrides = parsed as Record<string, Record<string, unknown>>;
+    } catch (e) {
+      toast(`规则覆盖 JSON 无效：${(e as Error).message}`, false);
+      return;
+    }
     const body = {
       id: form.id.trim(),
       name: form.name.trim(),
       enabled: form.enabled,
       rules: form.rules,
+      rule_overrides,
       rtsp_url: url,
+      ...(editing && form.revision != null ? { expected_revision: form.revision } : {}),
     };
     try {
       if (editing)
@@ -236,7 +253,13 @@ export default function CamerasPage() {
       setModalOpen(false);
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+        setModalOpen(false);
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   });
 
@@ -244,7 +267,7 @@ export default function CamerasPage() {
     void wrap(`re-${id}`, async () => {
       try {
         await api(`/api/cameras/${encodeURIComponent(id)}/restart`, { method: "POST" });
-        toast("已触发重连");
+        toast("已发起重连");
       } catch (e) {
         toast((e as Error).message, false);
       }
@@ -254,16 +277,23 @@ export default function CamerasPage() {
   const delCam = async (id: string) => {
     if (
       !(await confirm(
-        `确认删除监控 ${id}？将同时从 cameras.yaml 移除，历史告警保留。`,
+        `确认删除监控 ${id}？配置会从 machine.db 移除，历史告警会保留`,
       ))
     )
       return;
     try {
-      await api(`/api/cameras/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const revision = cams?.find((c) => c.id === id)?.revision;
+      const suffix = revision == null ? "" : `?expected_revision=${revision}`;
+      await api(`/api/cameras/${encodeURIComponent(id)}${suffix}`, { method: "DELETE" });
       toast("已删除");
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   };
 
@@ -555,6 +585,18 @@ export default function CamerasPage() {
             ) : (
               <span className="muted">尚无规则，请先到「规则配置」新建</span>
             )}
+          </div>
+          <label style={{ marginTop: 14 }}>摄像头级规则覆盖（JSON，可选）</label>
+          <textarea
+            rows={5}
+            spellCheck={false}
+            style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }}
+            value={form.ruleOverridesText}
+            onChange={(e) => set({ ruleOverridesText: e.target.value })}
+            placeholder={'{"1":{"zones":[{"x":0.1,"y":0.1,"w":0.5,"h":0.5}]}}'}
+          />
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            只填写当前已启用规则的参数覆盖；例如 zones、min_confidence。服务端会再次校验。
           </div>
           <label
             style={{

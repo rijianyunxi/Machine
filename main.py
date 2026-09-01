@@ -10,16 +10,14 @@ Active rules:
 
 Usage:
     python main.py                    # Run with default config
-    python main.py --config path/     # Run with custom config directory"""
+    python main.py                    # Runtime config comes from storage/machine.db
+"""
 
-import argparse
-import os
+import copy
 import signal
 import sys
 import time
 from pathlib import Path
-
-import yaml
 
 # Ensure project root is in Python path
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -29,9 +27,39 @@ from core.analyzer import BehaviorAnalyzer
 from core.capture import CameraManager, CameraConfig
 from core.detector import DetectionError, MultiDetector
 from core.snapshot import SnapshotManager
-from rules.rules_engine import get_all_rules, get_rules_store
-from infrastructure.persistence import AlertDatabase
+from infrastructure.persistence import AlertDatabase, ConfigRepository, MachineDatabase
+from application.config_manager import ConfigManager
 from utils.logger import setup_logger
+from rules.definitions import validate_rule_params
+
+
+def _rules_for_camera(snapshot, cam_cfg):
+    """Build the active rules for one camera from one immutable snapshot.
+
+    Camera-level overrides are partial and are merged into a deep copy of the
+    rule.  Validation happens again after the merge so an invalid override can
+    never reach the analyzer.
+    """
+    active_ids = {int(value) for value in (cam_cfg.get("rules", []) or [])}
+    raw_overrides = cam_cfg.get("rule_overrides", {}) or {}
+    if not isinstance(raw_overrides, dict):
+        raise ValueError(f"摄像头 {cam_cfg.get('id', '')} 的 rule_overrides 必须是对象")
+    result = []
+    for rule in snapshot.rules:
+        if not rule.enabled or rule.id not in active_ids:
+            continue
+        template = snapshot.templates.get(rule.template)
+        if not isinstance(template, dict):
+            raise ValueError(f"规则 {rule.id} 引用了不存在的模板: {rule.template}")
+        override = raw_overrides.get(str(rule.id), raw_overrides.get(rule.id, {})) or {}
+        if not isinstance(override, dict):
+            raise ValueError(f"摄像头 {cam_cfg.get('id', '')} 的规则 {rule.id} 覆盖必须是对象")
+        merged = copy.deepcopy(rule)
+        merged.params = validate_rule_params(
+            template, {**(rule.params or {}), **copy.deepcopy(override)}
+        )
+        result.append(merged)
+    return result
 
 
 class MachineVisionSystem:
@@ -45,14 +73,23 @@ class MachineVisionSystem:
     4. Snapshot capture and alert storage
     """
 
-    def __init__(self, config_dir: str = "config"):
+    def __init__(self):
         self._running = False
         self._shutdown = False
-        self._config_dir = config_dir
 
-        # Load configuration (fail fast on missing/invalid files)
-        self._settings = self._load_config("settings.yaml")
-        self._cameras_config = self._load_config("cameras.yaml")
+        # Runtime configuration is read only from the unified machine.db.
+        # YAML migration is explicit (see tools/import_yaml_config.py), never
+        # performed implicitly during process startup.
+        self._database = MachineDatabase(PROJECT_ROOT / "storage" / "machine.db")
+        self._config_repository = ConfigRepository(self._database)
+        self._config_manager = ConfigManager(self._config_repository)
+        snapshot = self._config_manager.snapshot
+        self._settings = snapshot.settings
+        self._cameras_config = {"cameras": list(snapshot.cameras)}
+        analyzer = getattr(self, "_analyzer", None)
+        if analyzer is not None:
+            analyzer.set_templates(snapshot.templates)
+        self._config_manager.subscribe(self._on_config_snapshot)
 
         # Setup logging
         log_cfg = self._settings.get("logging", {})
@@ -76,15 +113,17 @@ class MachineVisionSystem:
         self._detector = MultiDetector(self._settings)
         self._logger.info(f"Active models: {self._detector.loaded_models}")
 
-        # Behavior analyzer (shares the rules store with the web panel)
-        self._analyzer = BehaviorAnalyzer(self._settings,
-                                          config_dir=self._config_dir)
+        # Behavior analyzer uses the same immutable rule snapshot as the web panel.
+        self._analyzer = BehaviorAnalyzer(
+            self._settings,
+            templates=snapshot.templates,
+        )
 
         # Snapshot manager
         self._snapshot_manager = SnapshotManager(self._settings)
 
         # Database
-        self._db = AlertDatabase(self._settings)
+        self._db = AlertDatabase(self._settings, database=self._database)
 
         # Statistics
         self._stats = {
@@ -94,17 +133,93 @@ class MachineVisionSystem:
             "start_time": 0,
         }
         self._next_stats_time = 0.0
+        self._next_config_poll = 0.0
 
-    def _load_config(self, filename: str) -> dict:
-        """Load a YAML configuration file, failing fast if missing/invalid."""
-        filepath = os.path.join(self._config_dir, filename)
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Config file not found: {filepath}")
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        if not isinstance(data, dict):
-            raise ValueError(f"Invalid config format (expected YAML map): {filepath}")
-        return data
+    def _on_config_snapshot(self, snapshot):
+        """Publish a committed snapshot and reconcile live camera streams."""
+        self._settings = snapshot.settings
+        self._cameras_config = {"cameras": list(snapshot.cameras)}
+        analyzer = getattr(self, "_analyzer", None)
+        if analyzer is not None:
+            analyzer.set_templates(snapshot.templates)
+        self._sync_models_from_snapshot(snapshot)
+        if getattr(self, "_running", False):
+            self._sync_cameras_from_snapshot(snapshot.cameras)
+
+    def _sync_models_from_snapshot(self, snapshot):
+        """Reconcile loaded detectors with the committed model registry.
+
+        Model registry writes are published through the same snapshot listener
+        as cameras and rules.  A changed model is loaded into the detector
+        registry before the next processing round; a failed reload leaves no
+        stale detector for a changed path and is reported by the detector.
+        """
+        detector = getattr(self, "_detector", None)
+        if detector is None:
+            return
+        model_settings = snapshot.settings.get("model", {}) or {}
+        desired = {
+            str(item.get("name", "")).strip(): item
+            for item in (model_settings.get("models", []) or [])
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        }
+        loaded = set(detector.loaded_models)
+        for name in loaded - {
+            name for name, item in desired.items() if item.get("enabled", True)
+        }:
+            detector.unload_model(name)
+
+        for name, item in desired.items():
+            if not item.get("enabled", True):
+                continue
+            path = str(item.get("path", "")).strip()
+            if not path:
+                detector.unload_model(name)
+                continue
+            current = getattr(detector, "_detectors", {}).get(name)
+            confidence = item.get("confidence_override")
+            if current is not None:
+                configured_path = (PROJECT_ROOT / path).resolve()
+                current_path = Path(str(getattr(current, "model_path", ""))).resolve()
+                same_path = configured_path == current_path
+                if same_path:
+                    detector.set_thresholds(name, confidence=confidence)
+                    continue
+                # Do not let a changed registry entry keep using the old file.
+                detector.unload_model(name)
+            detector.load_model(name, path, confidence=confidence)
+
+    def _sync_cameras_from_snapshot(self, cameras):
+        """Apply camera additions, removals, and edits without a restart."""
+        manager = getattr(self, "_camera_manager", None)
+        if manager is None:
+            return
+        desired = {
+            str(cfg.get("id")): cfg for cfg in cameras
+            if cfg.get("id") and cfg.get("enabled", True)
+        }
+        for camera_id in list(manager._cameras):
+            if camera_id not in desired:
+                manager.remove_camera(camera_id)
+        for camera_id, cfg in desired.items():
+            running = manager._cameras.get(camera_id)
+            unchanged = (
+                running is not None
+                and running.config.name == cfg.get("name", camera_id)
+                and running.config.rtsp_url == cfg.get("rtsp_url", "")
+                and list(running.config.rules) == list(cfg.get("rules", []))
+            )
+            if unchanged:
+                continue
+            if running is not None:
+                manager.remove_camera(camera_id)
+            manager.add_camera(CameraConfig(
+                id=camera_id,
+                name=cfg.get("name", camera_id),
+                rtsp_url=cfg.get("rtsp_url", ""),
+                enabled=True,
+                rules=list(cfg.get("rules", [])),
+            ))
 
     def start(self):
         """Start the detection system."""
@@ -116,14 +231,14 @@ class MachineVisionSystem:
         try:
             from webapp.server import PanelServer
 
-            self._panel = PanelServer(system=self, config_dir=self._config_dir)
+            self._panel = PanelServer(system=self)
             self._panel.start()
         except Exception as e:
             self._logger.error(f"Web panel failed to start: {e}")
             self._panel = None
 
         # Print active rules
-        all_rules = get_all_rules(self._config_dir)
+        all_rules = list(self._config_manager.snapshot.rules)
         self._logger.info(f"Active rules: {len(all_rules)}")
         for rule in all_rules:
             self._logger.info(
@@ -141,26 +256,24 @@ class MachineVisionSystem:
 
         if not cameras:
             self._logger.warning(
-                "No cameras configured! Edit config/cameras.yaml to add cameras."
+                "No cameras configured! Add cameras from the web panel or config import."
             )
-            self._logger.info("Running in demo mode - system idle.")
-            self._idle_loop()
-            return
+            self._logger.info("Running in demo mode - waiting for cameras.")
+        else:
+            self._camera_manager.start_all(cameras)
 
-        self._camera_manager.start_all(cameras)
+            # Wait for cameras to connect
+            self._logger.info("Waiting for camera connections...")
+            time.sleep(3)
 
-        # Wait for cameras to connect
-        self._logger.info("Waiting for camera connections...")
-        time.sleep(3)
+            # Print connection status
+            status = self._camera_manager.get_status()
+            connected = sum(1 for s in status.values() if s["connected"])
+            self._logger.info(
+                f"Camera connection status: {connected}/{len(status)} connected"
+            )
 
-        # Print connection status
-        status = self._camera_manager.get_status()
-        connected = sum(1 for s in status.values() if s["connected"])
-        self._logger.info(
-            f"Camera connection status: {connected}/{len(status)} connected"
-        )
-
-        # Main processing loop
+        # Main processing loop also handles cameras added after startup.
         self._processing_loop()
 
     def _processing_loop(self):
@@ -169,17 +282,26 @@ class MachineVisionSystem:
         self._logger.info("Press Ctrl+C to stop")
         self._logger.info("-" * 60)
 
-        target_fps = self._settings.get("capture", {}).get("target_fps", 2)
-        frame_interval = 1.0 / target_fps if target_fps > 0 else 0.5
-        stale_after = max(5.0, 3 * frame_interval)
-
-        rules_store = get_rules_store(self._config_dir)
-
         while self._running:
             loop_start = time.time()
 
-            # Re-read each iteration so panel config edits hot-apply without restart
-            cameras = self._cameras_config.get("cameras", [])
+            # Embedded writes publish immediately; this low-frequency poll also
+            # picks up commits made by a separate panel process.
+            if time.time() >= self._next_config_poll:
+                try:
+                    self._config_manager.refresh_if_changed()
+                except Exception as exc:
+                    self._logger.error(f"Configuration refresh failed; keeping old snapshot: {exc}")
+                self._next_config_poll = time.time() + 1.0
+
+            # One coherent snapshot per processing round. No database/YAML
+            # reads occur in the frame loop.
+            snapshot = self._config_manager.snapshot
+            settings = snapshot.settings
+            cameras = snapshot.cameras
+            target_fps = settings.get("capture", {}).get("target_fps", 2)
+            frame_interval = 1.0 / target_fps if target_fps > 0 else 0.5
+            stale_after = max(5.0, 3 * frame_interval)
 
             for cam_cfg in cameras:
                 if not self._running:
@@ -189,8 +311,16 @@ class MachineVisionSystem:
                 if not cam_cfg.get("enabled", True):
                     continue
 
-                # Resolve enabled rules for this camera (rules.yaml driven)
-                rule_defs = rules_store.get_rules_for_camera(cam_cfg.get("rules", []))
+                # Resolve and validate camera-specific rules from this one
+                # snapshot.  An invalid persisted configuration must not crash
+                # the whole worker or produce a false alert.
+                try:
+                    rule_defs = _rules_for_camera(snapshot, cam_cfg)
+                except (TypeError, ValueError) as exc:
+                    self._logger.error(
+                        f"Invalid rule configuration for camera {cam_id}: {exc}"
+                    )
+                    continue
                 if not rule_defs:
                     continue
 
@@ -273,10 +403,6 @@ class MachineVisionSystem:
                 self._print_stats()
                 self._next_stats_time = now + 60
 
-    def _idle_loop(self):
-        """Idle loop when no cameras are configured."""
-        while self._running:
-            time.sleep(1)
 
     def _print_stats(self):
         """Print processing statistics."""
@@ -313,19 +439,9 @@ class MachineVisionSystem:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Machine Vision Unsafe Behavior Detection System"
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="config",
-        help="Path to configuration directory (default: config/)",
-    )
-    args = parser.parse_args()
     # Normal mode
     try:
-        system = MachineVisionSystem(config_dir=args.config)
+        system = MachineVisionSystem()
     except Exception as e:
         print(f"[FATAL] Failed to initialize: {e}", file=sys.stderr)
         sys.exit(1)

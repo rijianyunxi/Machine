@@ -81,6 +81,9 @@ export default function ModelsPage() {
     }
   });
 
+  const modelRevision = (name: string) =>
+    data?.models.find((m) => m.name === name)?.revision;
+
   const saveThreshold = (name: string, raw: string) =>
     wrap(`th-${name}`, async () => {
       const v = parseFloat(raw);
@@ -91,11 +94,16 @@ export default function ModelsPage() {
       try {
         await api(`/api/models/${encodeURIComponent(name)}`, {
           method: "PUT",
-          body: { confidence_override: v },
+          body: { confidence_override: v, expected_revision: modelRevision(name) },
         });
         toast("阈值已保存并热生效");
       } catch (e) {
-        toast((e as Error).message, false);
+        if ((e as { status?: number }).status === 409) {
+          toast("配置已被其他请求修改，请刷新后重试", false);
+          await refresh();
+        } else {
+          toast((e as Error).message, false);
+        }
       }
       refresh();
     })();
@@ -105,11 +113,16 @@ export default function ModelsPage() {
       try {
         await api(`/api/models/${encodeURIComponent(name)}`, {
           method: "PUT",
-          body: { enabled: enable },
+          body: { enabled: enable, expected_revision: modelRevision(name) },
         });
         toast(enable ? "已启用，后台加载中" : "已停用");
       } catch (e) {
-        toast((e as Error).message, false);
+        if ((e as { status?: number }).status === 409) {
+          toast("配置已被其他请求修改，请刷新后重试", false);
+          await refresh();
+        } else {
+          toast((e as Error).message, false);
+        }
       }
       refresh();
     })();
@@ -128,11 +141,18 @@ export default function ModelsPage() {
   const unregister = async (name: string) => {
     if (!(await confirm(`注销模型 ${name}？模型文件不会被删除。`))) return;
     try {
-      await api(`/api/models/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const revision = modelRevision(name);
+      const suffix = revision == null ? "" : `?expected_revision=${revision}`;
+      await api(`/api/models/${encodeURIComponent(name)}${suffix}`, { method: "DELETE" });
       toast("已注销");
       refresh();
     } catch (e) {
-      toast((e as Error).message, false);
+      if ((e as { status?: number }).status === 409) {
+        toast("配置已被其他请求修改，请刷新后重试", false);
+        await refresh();
+      } else {
+        toast((e as Error).message, false);
+      }
     }
   };
 

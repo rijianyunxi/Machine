@@ -1,24 +1,26 @@
 """
 Panel web server.
 
-Embedded mode : PanelServer(system, config_dir).start() from main.py —
+Embedded mode : PanelServer(system).start() from main.py —
                 runs uvicorn in a daemon thread sharing the live system.
-Standalone    : python -m webapp.server --config config — read-only panel
+Standalone    : python -m webapp.server — read-only panel
                 (history browsing + detection test bench) without the main
                 detection process.
 """
 
 import argparse
 import base64
+import hmac
 import threading
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from utils.logger import get_logger
+from utils.passwords import session_token, verify_password
 
 from webapp.state import RuntimeState
 
@@ -100,17 +102,31 @@ def create_app(state: RuntimeState) -> FastAPI:
     panel_cfg = state.settings().get("panel", {})
     auth_enabled = bool(panel_cfg.get("auth_enabled", True))
     username = str(panel_cfg.get("username", "admin"))
-    password = str(panel_cfg.get("password", "admin"))
-    expected = base64.b64encode(f"{username}:{password}".encode()).decode()
+    password_hash = str(panel_cfg.get("password", ""))
+    cookie_token = session_token(username, password_hash)
     COOKIE = "panel_token"
 
     from fastapi.responses import JSONResponse
 
+    def _check_basic_header(header: str) -> bool:
+        if not header or not header.lower().startswith("basic "):
+            return False
+        try:
+            raw = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
+            supplied_user, supplied_password = raw.split(":", 1)
+        except (ValueError, UnicodeDecodeError):
+            return False
+        return (hmac.compare_digest(supplied_user, username)
+                and verify_password(supplied_password, password_hash))
+
     @app.post("/api/login")
     async def login(data: dict):
-        if data.get("username") == username and data.get("password") == password:
+        supplied_user = str(data.get("username", ""))
+        supplied_password = str(data.get("password", ""))
+        if (hmac.compare_digest(supplied_user, username)
+                and verify_password(supplied_password, password_hash)):
             resp = JSONResponse({"ok": True})
-            resp.set_cookie(COOKIE, expected, max_age=7 * 86400,
+            resp.set_cookie(COOKIE, cookie_token, max_age=7 * 86400,
                             httponly=True, samesite="lax")
             return resp
         return JSONResponse(status_code=401, content={"detail": "用户名或密码错误"})
@@ -131,7 +147,7 @@ def create_app(state: RuntimeState) -> FastAPI:
                 return await call_next(request)
             header = request.headers.get("Authorization", "")
             cookie = request.cookies.get(COOKIE, "")
-            if header == f"Basic {expected}" or cookie == expected:
+            if _check_basic_header(header) or hmac.compare_digest(cookie, cookie_token):
                 return await call_next(request)
             if path.startswith("/api/"):
                 return JSONResponse(status_code=401,
@@ -156,8 +172,8 @@ def create_app(state: RuntimeState) -> FastAPI:
 class PanelServer:
     """Runs the FastAPI app on a uvicorn server inside a daemon thread."""
 
-    def __init__(self, system=None, config_dir="config"):
-        self.state = RuntimeState(config_dir=config_dir, system=system)
+    def __init__(self, system=None):
+        self.state = RuntimeState(system=system)
         panel_cfg = self.state.settings().get("panel", {})
         self.host = panel_cfg.get("host", "0.0.0.0")
         self.port = int(panel_cfg.get("port", 8000))
@@ -198,12 +214,11 @@ class PanelServer:
 
 def main():
     parser = argparse.ArgumentParser(description="独立模式启动面板（只读+测试台）")
-    parser.add_argument("--config", default="config", help="配置目录")
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
     args = parser.parse_args()
 
-    server = PanelServer(system=None, config_dir=args.config)
+    server = PanelServer(system=None)
     if args.host:
         server.host = args.host
     if args.port:
