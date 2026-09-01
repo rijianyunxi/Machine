@@ -1,4 +1,18 @@
+# 检测规则定义。
+#
+# 每条规则常用字段：
+#   id:         唯一规则 ID
+#   name:       规则显示名称
+#   description: 规则描述
+#   template:   模板类型，模板定义见 config/rule_templates.yaml
+#   models:     绑定的模型名称（对应 config/settings.yaml 中的 model.models[].name）
+#   params:     模板参数；不同模板的参数含义见模板里的 desc 注释
+#   severity:   严重程度（1=低，2=中，3=高，4=严重）
+#   enabled:    是否启用
+#   graph:      仅 template: graph 时使用，保存可视化画布的节点和连线
+
 rules:
+# 规则 1：未戴安全帽
 - id: 1
   name: no_safety_helmet
   description: Worker without safety helmet
@@ -15,6 +29,7 @@ rules:
     coverage_ratio: 0.5
   severity: 3
   enabled: true
+# 规则 2：门口有人靠近（区域侵入）
 - id: 2
   name: 门口有人靠近
   description: ''
@@ -31,6 +46,7 @@ rules:
     - Person
   severity: 3
   enabled: true
+# 规则 3：值守离岗检测（自定义画布规则）
 - id: 3
   name: 值守离岗检测
   description: ''
@@ -64,6 +80,7 @@ rules:
       to: n3
     - from: n3
       to: n4
+# 规则 13：禁火区吸烟
 - id: 13
   name: smoking_no_fire_zone
   description: Smoking detected in no-fire zone
@@ -80,6 +97,7 @@ rules:
     overlap_margin: 0.2
   severity: 4
   enabled: true
+# 规则 14：持烟检测
 - id: 14
   name: person_holding_cigarette
   description: Person holding/with cigarette in no-fire zone
