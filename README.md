@@ -13,7 +13,7 @@
 - 规则模板、规则参数和画布 graph；
 - 告警记录、名称快照和截图状态。
 
-`config/*.yaml` 仅作为开发阶段的首次导入源、人工排查材料和显式导入/导出工具的输入输出，页面保存不会回写 YAML，程序启动也不会隐式读取 YAML。
+运行时不依赖仓库内的 YAML 文件，页面保存不会回写 YAML，程序启动也不会隐式读取 YAML。需要迁移外部旧配置时，必须通过导入工具显式指定 YAML 目录。
 
 ## 快速开始
 
@@ -21,21 +21,15 @@
 # 1. 安装依赖
 uv pip install -r requirements.txt --python .venv/bin/python
 
-# 2. （首次使用或重建开发库时）显式导入 YAML 到统一数据库
-.venv/bin/python tools/import_yaml_config.py \
-  --config-dir config \
-  --database storage/machine.db
-
-# 3. 启动检测 + 面板
+# 2. 启动检测 + 面板
 .venv/bin/python main.py
 
-# 4. 浏览器打开面板
+# 3. 浏览器打开面板
 #    http://localhost:8000
 #    默认账号 admin；密码以导入的数据库配置为准，首次登录后请立即修改
 ```
 
 Windows PowerShell 可将 `.venv/bin/python` 替换为 `.venv\Scripts\python.exe`。
-非空数据库再次导入默认会拒绝；开发阶段需要覆盖导入时必须显式增加 `--reset`。
 
 ## 配置一个新检测（全程面板操作，零代码）
 
@@ -85,14 +79,15 @@ python main.py
 python -m webapp.server
 ```
 
-### 导入、导出、备份和恢复
+### 外部配置导入、导出、备份和恢复
 
 ```bash
-# 从四类 YAML 显式导入（只执行一次；非空库默认拒绝）
-python tools/import_yaml_config.py --config-dir config --database storage/machine.db
+# 如需迁移外部旧 YAML 配置，必须显式指定 YAML 目录
+python tools/import_yaml_config.py --config-dir /path/to/yaml \
+  --database storage/machine.db
 
-# 开发阶段明确覆盖数据库中的配置
-python tools/import_yaml_config.py --config-dir config \
+# 明确覆盖数据库中的配置
+python tools/import_yaml_config.py --config-dir /path/to/yaml \
   --database storage/machine.db --reset
 
 # 导出不含 API key、密码哈希和 RTSP 明文密码的公共配置
@@ -109,7 +104,7 @@ python tools/restore_machine.py storage/backups/machine-YYYYMMDD-HHMMSS \
 
 备份目录包含 `machine.db`、脱敏配置、`manifest.json` 以及模型/截图文件清单。恢复工具会在替换目标前校验 SQLite integrity、外键、JSON 字段和迁移版本。
 
-首次导入的 YAML 文件仍保留在 `config/`，但运行期间 settings、models、cameras、templates、rules、alerts 均以 `storage/machine.db` 为准。
+仓库不再包含固定的 `config/` YAML；运行期间 settings、models、cameras、templates、rules、alerts 均以 `storage/machine.db` 为准。
 
 ## 内置规则速查
 
@@ -125,13 +120,12 @@ python tools/restore_machine.py storage/backups/machine-YYYYMMDD-HHMMSS \
 ## 目录说明
 
 ```
-config/           开发阶段导入用 YAML 模板，不是运行时配置源
 application/      ConfigManager / ConfigSnapshot 运行时配置边界
 core/             取流 / 检测 / 分析 / 快照
 rules/            规则数据模型与判定逻辑常量
 infrastructure/   machine.db、Repository、告警持久化
 storage/          运行数据：machine.db / snapshots/ / backups/
-tools/            显式 YAML 导入、脱敏导出、备份和恢复工具
+tools/            外部 YAML 导入、脱敏导出、备份和恢复工具
 webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist）
 ```
 

@@ -475,7 +475,7 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 
 提供显式命令，例如：
 
-`python -m tools.import_yaml_config --config-dir config --database storage/machine.db`
+`python -m tools.import_yaml_config --config-dir /path/to/yaml --database storage/machine.db`
 
 导入要求：
 
@@ -616,7 +616,7 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 
 已验证：前端生产构建通过；后端统一数据库回归测试覆盖 revision、热同步、导入回滚和敏感字段语义。
 
-备注：运行时已不再自动导入 YAML；首次初始化需显式执行 `tools/import_yaml_config.py`。
+备注：运行时已不再自动导入 YAML；如需迁移外部旧配置，必须显式指定 YAML 目录执行 `tools/import_yaml_config.py`。仓库内不再保留固定 `config/` YAML。
 
 ### 阶段 5：调整告警快照和截图状态
 
@@ -636,9 +636,10 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 - [x] 删除临时 YAML Repository（本项目未建立临时实现，直接切换 SQLite）。
 - [x] 删除启动时自动导入和 YAML fallback。
 - [ ] 删除重复默认值覆盖逻辑。
-  说明：设置页的 `SETTINGS_SCHEMA` 与 YAML 示例中的默认值分别服务于表单校验和显式导入，不能在本轮直接合并；运行时已删除未使用的规则 seed 默认副本。
+  说明：设置页的 `SETTINGS_SCHEMA` 服务于表单校验，外部 YAML 导入数据由导入器单独校验；运行时已删除未使用的规则 seed 默认副本。
 - [x] 删除已废弃的 YAML 写入服务和调用点。
-- [x] 保留独立的 import/export 工具。
+- [x] 保留独立的 import/export 工具，导入时必须显式指定外部 YAML 目录。
+- [x] 删除仓库内的 `config/` YAML 样例和首次导入依赖。
 - [x] 删除未被运行时引用的 `rules/rules_engine.py` 兼容导出层、死代码 API 和无效的 `--config` 运行时参数。
 - [x] 更新 README、配置说明、备份与恢复说明。
 - [x] 检查 Git 中不应提交 `machine.db`、`machine.db-wal`、`machine.db-shm`、密钥和实际摄像头凭据。
@@ -754,7 +755,7 @@ SQLite 迁移前后都必须通过统一 `ConfigSnapshot` 解决，不能只把 
 5. 新增、删除、修改摄像头和规则无需重启即可正确生效；
 6. 密钥、密码和 RTSP 凭据不会通过 API、日志或审计明文泄露；
 7. 历史告警不依赖当前摄像头和规则记录；
-8. 删除配置 YAML 后，应用仍能通过测试并完整运行；
+8. 仓库不含配置 YAML 时，应用仍能通过测试并完整运行；
 9. `machine.db`、截图目录和模型文件有可验证的统一备份与恢复流程。
 
 执行顺序保持为：**先修安全与运行时同步问题 → 建立 Repository/Manager/Snapshot 边界 → 实现 SQLite Repository → 一次性导入 → 直接切换 SQLite → 删除 YAML 兼容代码**。

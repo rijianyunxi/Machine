@@ -1,4 +1,4 @@
-"""Explicitly import the legacy YAML configuration into machine.db."""
+"""Explicitly import an external YAML configuration bundle into machine.db."""
 from __future__ import annotations
 
 import argparse
@@ -16,9 +16,12 @@ def resolve(root: Path, value: str | Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Import settings/cameras/rule_templates/rules YAML into machine.db"
+        description="Import an external settings/cameras/rule_templates/rules YAML bundle into machine.db"
     )
-    parser.add_argument("--config-dir", default="config")
+    parser.add_argument(
+        "--config-dir", required=True,
+        help="directory containing settings.yaml, cameras.yaml, rule_templates.yaml and rules.yaml",
+    )
     parser.add_argument("--database", default="storage/machine.db")
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument(
@@ -30,6 +33,8 @@ def main() -> int:
     project_root = Path(args.project_root).resolve()
     config_dir = resolve(project_root, args.config_dir).resolve()
     database_path = resolve(project_root, args.database).resolve()
+    if not config_dir.is_dir():
+        raise SystemExit(f"YAML configuration directory does not exist: {config_dir}")
     database = MachineDatabase(database_path)
     repository = ConfigRepository(database)
     revision = repository.import_yaml(config_dir, reset=args.reset)
