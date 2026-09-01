@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from application.config_manager import ConfigManager
 from core.analyzer import Violation
+from core.detector import MultiDetector
 from infrastructure.persistence import (
     AlertDatabase,
     ConfigRepository,
@@ -50,6 +51,12 @@ class UnifiedDatabaseTests(unittest.TestCase):
         settings += "model:\n  models:\n    - name: detector\n      path: models/detector.pt\n      enabled: true\n"
         (config / "settings.yaml").write_text(settings, encoding="utf-8")
         return config
+
+    def test_detector_can_wait_for_model_registration_on_first_run(self):
+        detector = MultiDetector({}, allow_empty=True)
+        self.assertEqual(detector.loaded_models, [])
+        with self.assertRaisesRegex(RuntimeError, "No models configured"):
+            MultiDetector({})
 
     def test_empty_database_migrates_and_pragmas_are_enabled(self):
         with tempfile.TemporaryDirectory() as td:

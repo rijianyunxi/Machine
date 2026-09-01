@@ -26,7 +26,7 @@ uv pip install -r requirements.txt --python .venv/bin/python
 
 # 3. 浏览器打开面板
 #    http://localhost:8000
-#    默认账号 admin；密码以导入的数据库配置为准，首次登录后请立即修改
+#    默认账号 admin，默认密码 admin，首次登录后请立即修改
 ```
 
 Windows PowerShell 可将 `.venv/bin/python` 替换为 `.venv\Scripts\python.exe`。
@@ -97,6 +97,17 @@ python tools/restore_machine.py storage/backups/machine-YYYYMMDD-HHMMSS \
 备份目录包含 `machine.db`、脱敏配置、`manifest.json` 以及模型/截图文件清单。恢复工具会在替换目标前校验 SQLite integrity、外键、JSON 字段和迁移版本。
 
 仓库不再包含固定的 `config/` YAML；运行期间 settings、models、cameras、templates、rules、alerts 均以 `storage/machine.db` 为准。
+
+### 新机器 / 空数据库首次启动
+
+`storage/` 是本地运行数据，不会随 Git 仓库提交。因此把项目复制或克隆到另一台电脑后，首次启动可能只有一个空的 `storage/machine.db`。此时 `main.py` 会进入“等待模型配置”状态，不会再因为没有模型而退出：
+
+1. 运行 `python main.py`；
+2. 打开 `http://localhost:8000/app/models`；
+3. 上传或选择 `models/` 下的 `.pt` 文件，注册并启用；
+4. 回到「规则配置」绑定模型，再配置摄像头。
+
+也可以先运行独立面板 `python -m webapp.server` 完成模型注册，之后再启动 `python main.py`。如果要迁移已有配置，请使用备份工具恢复 `machine.db`，并同时恢复模型文件；不要直接把另一台电脑的绝对路径原样写入数据库。
 
 ## 内置规则速查
 

@@ -108,8 +108,17 @@ class MachineVisionSystem:
 
         # Detection models (multi-model)
         self._logger.info("Loading detection models...")
-        self._detector = MultiDetector(self._settings)
-        self._logger.info(f"Active models: {self._detector.loaded_models}")
+        # A fresh checkout has no machine.db model rows yet.  Keep the main
+        # process (and its panel) alive so the first model can be registered
+        # from the Models page instead of failing before the UI is reachable.
+        self._detector = MultiDetector(self._settings, allow_empty=True)
+        if self._detector.loaded_models:
+            self._logger.info(f"Active models: {self._detector.loaded_models}")
+        else:
+            self._logger.warning(
+                "No detection models loaded; open the web panel and register/enable "
+                "a model in machine.db."
+            )
 
         # Behavior analyzer uses the same immutable rule snapshot as the web panel.
         self._analyzer = BehaviorAnalyzer(
@@ -291,6 +300,14 @@ class MachineVisionSystem:
                 except Exception as exc:
                     self._logger.error(f"Configuration refresh failed; keeping old snapshot: {exc}")
                 self._next_config_poll = time.time() + 1.0
+
+            # A model-less installation is a valid first-run state.  Cameras
+            # may already be configured, but inference must wait until a model
+            # is registered and hot-loaded from the panel.  Skip the camera
+            # pass entirely to avoid treating missing models as frame errors.
+            if not self._detector.loaded_models:
+                time.sleep(0.5)
+                continue
 
             # One coherent snapshot per processing round. No database/YAML
             # reads occur in the frame loop.

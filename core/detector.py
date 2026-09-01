@@ -189,7 +189,7 @@ class Detector:
 class MultiDetector:
     """Multi-model detection registry that merges results from enabled models."""
 
-    def __init__(self, settings: dict):
+    def __init__(self, settings: dict, *, allow_empty: bool = False):
         self._detectors: Dict[str, Detector] = {}
         self._registry_lock = threading.Lock()
         self._load_errors: Dict[str, str] = {}
@@ -200,6 +200,7 @@ class MultiDetector:
         self._confidence = model_cfg.get("confidence_threshold", 0.5)
         self._iou = model_cfg.get("iou_threshold", 0.45)
         self._img_size = model_cfg.get("img_size", 640)
+        self._allow_empty = bool(allow_empty)
 
         self._load_models(settings)
 
@@ -230,9 +231,14 @@ class MultiDetector:
         models_list = model_cfg.get("models", [])
 
         if not models_list:
-            raise RuntimeError(
-                "No models configured: import or register models in machine.db"
-            )
+            message = "No models configured: register a model in machine.db"
+            if self._allow_empty:
+                self._logger.warning(
+                    "%s; starting without detectors and waiting for panel configuration",
+                    message,
+                )
+                return
+            raise RuntimeError(message)
 
         for m in models_list:
             name = m.get("name", "unnamed")
@@ -269,9 +275,14 @@ class MultiDetector:
                 self._load_errors[name] = str(e)
 
         if not self._detectors:
-            raise RuntimeError(
-                "No detection models loaded - check model paths in machine.db"
-            )
+            message = "No detection models loaded - check model paths in machine.db"
+            if self._allow_empty:
+                self._logger.warning(
+                    "%s; starting without detectors and waiting for a usable model",
+                    message,
+                )
+                return
+            raise RuntimeError(message)
 
         self._logger.info(
             f"Loaded {len(self._detectors)} model(s): {list(self._detectors.keys())}"
