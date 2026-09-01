@@ -21,6 +21,9 @@ export function Modal({
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
+  // onClose 通常由父组件内联创建；用 ref 避免输入时父组件重渲染导致焦点效果重复执行。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     lastFocus.current = document.activeElement as HTMLElement | null;
@@ -28,19 +31,19 @@ export function Modal({
     const box = boxRef.current;
     if (box) {
       const focusable = box.querySelector<HTMLElement>(
-        "button, input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        "input:not([type='hidden']), select, textarea, button, [tabindex]:not([tabindex='-1'])",
       );
       (focusable || box).focus();
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
       lastFocus.current?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div

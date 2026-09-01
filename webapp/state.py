@@ -13,6 +13,7 @@ to live objects -> report what needs a restart.
 import copy
 import os
 import re
+import shutil
 import threading
 import time
 from collections import deque
@@ -63,7 +64,7 @@ SETTINGS_SCHEMA = {
         "label": "日志参数",
         "keys": {
             "level": ("str", "INFO", "日志级别"),
-            "file": ("str", "logs/machine_vision.log", "日志文件（改后需重启）"),
+            "file": ("str", "storage/logs/machine_vision.log", "日志文件（改后需重启）"),
             "max_size_mb": ("int", 50, "单文件上限 MB（需重启）"),
             "backup_count": ("int", 5, "轮转份数（需重启）"),
         },
@@ -163,22 +164,28 @@ class RuntimeState:
 
     def _ensure_panel_settings(self):
         """Make sure settings.yaml has the panel + retention defaults."""
-        doc = self.config.load("settings.yaml")
-        changed = False
-        for section, spec in SETTINGS_SCHEMA.items():
-            sec = doc.setdefault(section, {})
-            if not isinstance(sec, dict):
-                doc[section] = sec = {}
-            for key, (typ, default, _desc) in spec["keys"].items():
-                if key not in sec:
-                    sec[key] = default
-                    changed = True
-        if changed:
-            self.config.save("settings.yaml", doc)
-            if self.system is not None:
-                self.system._settings.update(
-                    {s: dict(doc[s]) for s in SETTINGS_SCHEMA if s in doc}
-                )
+        current = self.config.load("settings.yaml")
+        needs_defaults = any(
+            not isinstance(current.get(section), dict)
+            or any(key not in (current.get(section) or {})
+                   for key in spec["keys"])
+            for section, spec in SETTINGS_SCHEMA.items()
+        )
+        if not needs_defaults:
+            return
+
+        def ensure(doc):
+            for section, spec in SETTINGS_SCHEMA.items():
+                sec = doc.setdefault(section, {})
+                if not isinstance(sec, dict):
+                    doc[section] = sec = {}
+                for key, (typ, default, _desc) in spec["keys"].items():
+                    sec.setdefault(key, default)
+            return {s: dict(doc[s]) for s in SETTINGS_SCHEMA if s in doc}
+
+        synced = self.config.update_document("settings.yaml", ensure)
+        if self.system is not None:
+            self.system._settings.update(synced)
 
     # ------------------------------------------------------------------
     # System info / stats
@@ -661,39 +668,43 @@ class RuntimeState:
                        confidence_override=None):
         if not re.fullmatch(r"[\w\-]+", name or ""):
             raise ValueError("模型名称只允许字母/数字/下划线/连字符")
-        doc = self.config.load("settings.yaml")
-        models = doc.setdefault("model", {}).setdefault("models", [])
-        if any(m.get("name") == name for m in models):
-            raise ValueError(f"模型名称已存在: {name}")
-        entry = CommentedMap()
-        entry["name"] = name
-        entry["path"] = f"models/{file}"
-        entry["enabled"] = bool(enabled)
-        if confidence_override is not None:
-            entry["confidence_override"] = float(confidence_override)
-        models.append(entry)
-        self.config.save("settings.yaml", doc)
+        def mutate(doc):
+            models = doc.setdefault("model", {}).setdefault("models", [])
+            if any(m.get("name") == name for m in models):
+                raise ValueError(f"模型名称已存在: {name}")
+            entry = CommentedMap()
+            entry["name"] = name
+            entry["path"] = f"models/{file}"
+            entry["enabled"] = bool(enabled)
+            if confidence_override is not None:
+                entry["confidence_override"] = float(confidence_override)
+            models.append(entry)
+            return dict(entry), models
+
+        entry, models = self.config.update_document("settings.yaml", mutate)
         if self.system is not None:
             self.system._settings.setdefault("model", {})["models"] = models
         if enabled:
-            self._hot_apply_model_entry(dict(entry))
-        return dict(entry)
+            self._hot_apply_model_entry(entry)
+        return entry
 
     def update_model(self, name: str, data: dict):
-        doc = self.config.load("settings.yaml")
-        models = doc.get("model", {}).get("models", [])
-        target = next((m for m in models if m.get("name") == name), None)
-        if target is None:
-            raise ValueError(f"模型未注册: {name}")
-        if "confidence_override" in data and data["confidence_override"] is not None:
-            target["confidence_override"] = float(data["confidence_override"])
-        if "enabled" in data:
-            target["enabled"] = bool(data["enabled"])
-        self.config.save("settings.yaml", doc)
+        def mutate(doc):
+            models = doc.get("model", {}).get("models", [])
+            target = next((m for m in models if m.get("name") == name), None)
+            if target is None:
+                raise ValueError(f"模型未注册: {name}")
+            if "confidence_override" in data and data["confidence_override"] is not None:
+                target["confidence_override"] = float(data["confidence_override"])
+            if "enabled" in data:
+                target["enabled"] = bool(data["enabled"])
+            return dict(target), models
+
+        target, models = self.config.update_document("settings.yaml", mutate)
         if self.system is not None:
             self.system._settings.setdefault("model", {})["models"] = models
-        self._hot_apply_model_entry(dict(target))
-        return dict(target)
+        self._hot_apply_model_entry(target)
+        return target
 
     def reload_model(self, name: str):
         if self.system is None:
@@ -712,13 +723,15 @@ class RuntimeState:
         ).start()
 
     def unregister_model(self, name: str):
-        doc = self.config.load("settings.yaml")
-        models = doc.get("model", {}).get("models", [])
-        remaining = [m for m in models if m.get("name") != name]
-        if len(remaining) == len(models):
-            raise ValueError(f"模型未注册: {name}")
-        doc["model"]["models"] = remaining
-        self.config.save("settings.yaml", doc)
+        def mutate(doc):
+            models = doc.get("model", {}).get("models", [])
+            remaining = [m for m in models if m.get("name") != name]
+            if len(remaining) == len(models):
+                raise ValueError(f"模型未注册: {name}")
+            doc["model"]["models"] = remaining
+            return remaining
+
+        remaining = self.config.update_document("settings.yaml", mutate)
         if self.system is not None:
             self.system._settings.setdefault("model", {})["models"] = remaining
             self.system._detector.unload_model(name)
@@ -966,10 +979,11 @@ class RuntimeState:
                             "size_mb": round(size / 1048576, 1)})
         usage = {"snapshots_total_mb": round(total / 1048576, 1),
                  "per_day": per_day[:30]}
-        st = os.statvfs(PROJECT_ROOT)
-        usage["disk_total_gb"] = round(st.f_frsize * st.f_blocks / 1073741824, 1)
-        usage["disk_free_gb"] = round(st.f_frsize * st.f_bavail / 1073741824, 1)
-        used_pct = 1 - st.f_bavail / st.f_blocks if st.f_blocks else 0
+        # shutil.disk_usage works consistently on Windows and POSIX.
+        disk = shutil.disk_usage(PROJECT_ROOT)
+        usage["disk_total_gb"] = round(disk.total / 1073741824, 1)
+        usage["disk_free_gb"] = round(disk.free / 1073741824, 1)
+        used_pct = disk.used / disk.total if disk.total else 0
         usage["disk_used_pct"] = round(used_pct * 100, 1)
         usage["watermark"] = ("red" if used_pct > 0.9
                               else "yellow" if used_pct > 0.8 else "ok")
@@ -1001,7 +1015,7 @@ class RuntimeState:
 
     def tail_logs(self, tail: int = 500, level: str = None) -> list:
         log_file = self.settings().get("logging", {}).get("file",
-                                                          "logs/machine_vision.log")
+                                                          "storage/logs/machine_vision.log")
         path = Path(log_file)
         if not path.is_absolute():
             path = PROJECT_ROOT / path

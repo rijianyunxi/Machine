@@ -69,12 +69,12 @@
 
 /* 亮色下主按钮改为参考站的近黑实心（含 mini 尺寸，保持主次一致）。
  * :not() 排除所有"非实心主按钮"的自定义控件，避免它们被染成黑块。 */
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.preset-card):not(.graph-pal-item) {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.preset-card):not(.graph-pal-item) {
   background: #232425;
   border-color: #232425;
   color: #fff;
 }
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.preset-card):not(.graph-pal-item):hover {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.preset-card):not(.graph-pal-item):hover {
   background: #35373a;
   filter: none;
 }
@@ -194,7 +194,7 @@ a:hover { text-decoration: underline; }
 .page-head .page-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 .page-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
-.content { padding: 20px 28px 40px; max-width: 1440px; width: 100%; }
+.content { padding: 20px 28px 40px; width: 100%; }
 
 /* ============ Cards ============ */
 .card {
@@ -612,7 +612,8 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 @media (max-width: 860px) {
   .sidebar { width: 64px; }
   .brand b, .brand span, .nav a span { display: none; }
-  .brand { justify-content: center; padding: 16px 8px; }
+  .brand { flex-direction: column; gap: 8px; padding: 14px 8px; }
+  .brand .theme-toggle { margin-left: 0; }
   .nav a { justify-content: center; padding: 11px 8px; }
   .nav a.active::before { left: -8px; }
   .sidebar-foot { display: none; }
@@ -636,7 +637,21 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .tpl-param-grid input, .tpl-param-grid select { width: 100%; min-width: 0; }
 
 /* ============ 在线标注页（annotate） ============ */
-@media (max-width:1100px){ .anno-layout{grid-template-columns:1fr !important} }
+/* 标注页：三列等高工作台，右列卡片填满视口剩余高度 */
+.anno-layout { height: calc(100vh - 170px); min-height: 480px; }
+.anno-list-card { height: 100%; overflow-y: auto; }
+.anno-canvas-card { display: flex; flex-direction: column; min-height: 0; }
+.anno-stage { flex: 1; min-height: 0; overflow: auto; }
+.anno-stage-inner { position: relative; width: fit-content; margin: 0 auto; line-height: 0; }
+.anno-side { height: 100%; min-height: 0; }
+.anno-side .box-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.anno-side .box-card .feed { overflow-y: auto; }
+@media (max-width:1100px){
+  .anno-layout { grid-template-columns: 1fr !important; height: auto; min-height: 0; }
+  .anno-list-card { height: auto; max-height: 55vh; }
+  .anno-side { height: auto; }
+  .anno-stage img { max-height: 66vh; }
+}
 .anno-box{position:absolute;border:2px solid var(--accent);cursor:pointer;box-sizing:border-box}
 .anno-box.sel{border-color:var(--yellow);box-shadow:0 0 0 1px var(--yellow)}
 .anno-box .tag{position:absolute;top:-19px;left:-2px;background:var(--accent);color:var(--on-accent);
@@ -750,6 +765,42 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .page-tabs .tab:hover { color: var(--text); filter: none; }
 .page-tabs .tab.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .rules-pane { min-width: 0; }
+/* 系统设置分类 tab：只展示当前分类，避免配置卡片堆成一面墙 */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1 1 180px;
+  min-height: 38px;
+  padding: 7px 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.settings-tab:hover { color: var(--text); filter: none; }
+.settings-tab.on {
+  background: var(--accent-soft);
+  border-color: rgba(77, 159, 255, 0.25);
+  color: var(--accent);
+  font-weight: 600;
+}
+.settings-tab .chip { flex-shrink: 0; }
+.settings-grid { align-items: start; }
 /* 类别 tag 输入 */
 .tag-input {
   border: 1px solid var(--border); border-radius: 8px;
