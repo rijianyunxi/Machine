@@ -14,11 +14,10 @@ import threading
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware import Middleware
 from utils.logger import get_logger
 
 from webapp.state import RuntimeState
@@ -79,19 +78,6 @@ def create_app(state: RuntimeState) -> FastAPI:
 
         app.get("/app", include_in_schema=False)(spa_index)
         app.get("/app/{path:path}", include_in_schema=False)(spa_index)
-
-    # ---------------- pages ----------------
-
-    PAGES = ["dashboard", "cameras", "models", "datasets", "annotate",
-             "train", "rules", "detect", "alerts", "snapshots",
-             "settings", "logs"]
-
-    def page(name: str):
-        async def view(request: Request):
-            return app.state.templates.TemplateResponse(
-                request, f"{name}.html", {"page": name, "pages": PAGES}
-            )
-        return view
 
     @app.get("/")
     async def index():

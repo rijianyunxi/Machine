@@ -16,7 +16,6 @@ ruamel.yaml
 # Web panel
 fastapi
 uvicorn
-jinja2
 python-multipart
 
 # Utilities
