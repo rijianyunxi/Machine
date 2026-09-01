@@ -18,10 +18,27 @@ import { useToast } from "../ui/Toast";
 import { Chip, Empty, useBusy } from "../ui/badges";
 import { ZoneRectEditor } from "../ui/ZoneRectEditor";
 import { GraphEditor, validateGraph } from "../ui/GraphEditor";
-import { BLANK_PRESET, GRAPH_PRESETS, type GraphPreset } from "./graphPresets";
+import { BLANK_PRESET } from "./graphPresets";
 import { CONVERTIBLE_TEMPLATES, graphToParams, ruleToGraph } from "./graphConvert";
 
 type ParamValues = Record<string, unknown>;
+
+const graphModels = (graph: RuleGraph): string[] => [
+  ...new Set(
+    graph.nodes
+      .map((node) => node.model?.trim())
+      .filter((model): model is string => Boolean(model)),
+  ),
+];
+
+const attachGraphModels = (graph: RuleGraph, models: string[]): RuleGraph => ({
+  ...graph,
+  nodes: graph.nodes.map((node) =>
+    node.model || !models.length || !["class_present", "class_absent", "class_covering", "near_class"].includes(node.type)
+      ? node
+      : { ...node, model: models[0] },
+  ),
+});
 
 /* 判定逻辑 -> 规则落盘时使用的内部模板名（模板已从界面隐藏，仅作存储机制） */
 const LOGIC_CANONICAL: Record<string, string> = {
@@ -223,6 +240,9 @@ export default function RulesPage() {
   >({});
   const [models, setModels] = useState<string[]>([]);
   const [modelClasses, setModelClasses] = useState<Record<string, string[]>>({});
+  const [modelEnabled, setModelEnabled] = useState<Record<string, boolean>>({});
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsLoadError, setModelsLoadError] = useState(false);
   // 区域画框编辑器的参考画面来源（启用中的监控）
   const [cameras, setCameras] = useState<
     Array<{ id: string; name: string; connected: boolean }>
@@ -233,19 +253,17 @@ export default function RulesPage() {
       for (const c of classes) m.set(c, [...(m.get(c) || []), name]);
     return [...m.entries()].map(([cls, ms]) => ({ cls, models: ms }));
   })();
-  // 画布参数面板的类别建议：全部模型类别的并集
-  const classOptions = [...new Set(Object.values(modelClasses).flat())];
   const [summary, setSummary] = useState<
     Record<string, { false_positive_rate: number | null }> | null
   >(null);
   // 画布节点注册表（GET /api/rules/node-types）：失败时画布编辑器报错并禁用保存
   const [nodeTypes, setNodeTypes] = useState<Record<string, GraphNodeTypeSpec>>({});
   const [nodeTypesFailed, setNodeTypesFailed] = useState(false);
-  const [galleryOpen, setGalleryOpen] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [editingRevision, setEditingRevision] = useState<number | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   const [form, setForm] = useState<RuleForm | null>(null);
+  const hasCanvas = Boolean(form && (form.template === "graph" || CONVERTIBLE_TEMPLATES[form.template]));
   const toast = useToast();
   const confirm = useConfirm();
   const { busy, wrap } = useBusy();
@@ -279,13 +297,23 @@ export default function RulesPage() {
     api<{ logics: Record<string, { label: string; desc: string }> }>(
       "/api/rules/template-logics",
     ).then((r) => setLogics(r.logics));
+    setModelsLoading(true);
+    setModelsLoadError(false);
     api<ModelsResponse>("/api/models").then((r) => {
-      setModels(r.models.map((m) => m.name));
+      const entries = r.models || [];
+      setModels(entries.map((m) => m.name));
+      setModelEnabled(
+        Object.fromEntries(entries.map((m) => [m.name, m.config_enabled !== false])),
+      );
       setModelClasses(
         Object.fromEntries(
-          r.models.map((m) => [m.name, Object.values(m.classes || {})]),
+          entries.map((m) => [m.name, Object.values(m.classes || {})]),
         ),
       );
+    }).catch(() => {
+      setModelsLoadError(true);
+    }).finally(() => {
+      setModelsLoading(false);
     });
     api<{
       cameras: Array<{ id: string; name: string; enabled: boolean; connected: boolean }>;
@@ -327,21 +355,23 @@ export default function RulesPage() {
       logic: r ? logicOf(template) || "presence" : "presence",
       template,
       graph: r?.graph
-        ? cloneGraph(r.graph)
-        : converted || { nodes: [], edges: [] },
+        ? attachGraphModels(cloneGraph(r.graph), r.models || [])
+        : converted
+          ? attachGraphModels(converted, r?.models || [])
+          : { nodes: [], edges: [] },
     });
     setRuleOpen(true);
   };
 
-  /* 从预设画廊新建：template 固定 graph，画布取预置图（深拷贝） */
-  const openRuleFromPreset = (p: GraphPreset) => {
+  /* 从空白画布新建：template 固定 graph，画布取空白图（深拷贝） */
+  const openRuleFromPreset = () => {
     setEditing(null);
     setEditingRevision(null);
     setForm({
       ...baseForm(),
       logic: "graph",
       template: "graph",
-      graph: cloneGraph(p.graph),
+      graph: cloneGraph(BLANK_PRESET.graph),
     });
     setRuleOpen(true);
   };
@@ -357,7 +387,7 @@ export default function RulesPage() {
     const useCanvas = form.template === "graph" ||
       !!CONVERTIBLE_TEMPLATES[form.template];
     if (useCanvas) {
-      const errs = validateGraph(form.graph, nodeTypes);
+      const errs = validateGraph(form.graph, nodeTypes, models, form.template === "graph");
       if (errs.length) {
         toast(errs[0], false);
         return;
@@ -367,16 +397,19 @@ export default function RulesPage() {
       const legacyParams = CONVERTIBLE_TEMPLATES[form.template]
         ? graphToParams(form.template, form.graph)
         : null;
+      const graphForSave = legacyParams
+        ? form.graph
+        : attachGraphModels(form.graph, form.models);
       const body = {
-        id: +form.id || null,
+        id: editing ? +form.id : null,
         name: form.name.trim() || "未命名规则",
         description: form.description.trim(),
         template: legacyParams ? (form.template as string) : ("graph" as const),
-        models: form.models,
+        models: legacyParams || form.template !== "graph" ? form.models : graphModels(graphForSave),
         params: legacyParams || {},
         severity: +form.severity,
         enabled: form.enabled,
-        graph: legacyParams ? undefined : form.graph,
+        graph: legacyParams ? undefined : graphForSave,
         ...(editing && editingRevision != null
           ? { expected_revision: editingRevision }
           : {}),
@@ -493,15 +526,15 @@ export default function RulesPage() {
   /* 画布规则校验：不满足时禁用保存（节点库失败也禁用） */
   const graphErrs =
     form && form.template === "graph" && !nodeTypesFailed
-      ? validateGraph(form.graph, nodeTypes)
+              ? validateGraph(form.graph, nodeTypes, models, form.template === "graph")
       : [];
 
   return (
     <Page
       title="规则配置"
-      subtitle="三步完成一个检测：模型里来类别，规则定何时告警，监控里选哪路画面"
+      subtitle="从空白画布搭建检测逻辑；模型和类别在检测节点中配置"
       actions={
-        <button onClick={() => setGalleryOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <button onClick={openRuleFromPreset} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Icon name="plus" size={13} /> 新建规则
         </button>
       }
@@ -569,35 +602,6 @@ export default function RulesPage() {
         )}
       </div>
 
-      {/* 预设画廊：新建规则先选场景（契约 §6） */}
-      {galleryOpen && (
-        <Modal
-          title="新建规则 · 选择场景"
-          width={840}
-          onClose={() => setGalleryOpen(false)}
-        >
-          <p className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
-            选择一个预置场景快速开始（进入后可在画布上继续调整），或从空白画布自由搭建。
-          </p>
-          <div className="preset-grid">
-            {[...GRAPH_PRESETS, BLANK_PRESET].map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                className={"preset-card" + (p.key === "blank" ? " blank" : "")}
-                onClick={() => {
-                  setGalleryOpen(false);
-                  openRuleFromPreset(p);
-                }}
-              >
-                <b>{p.title}</b>
-                <span>{p.desc}</span>
-              </button>
-            ))}
-          </div>
-        </Modal>
-      )}
-
       {/* 规则弹窗 */}
       {ruleOpen && form && (
         <Modal
@@ -608,8 +612,8 @@ export default function RulesPage() {
                 ? "新建规则 · 画布"
                 : "新建规则"
           }
-          width={form.template === "graph" || CONVERTIBLE_TEMPLATES[form.template] ? 1140 : 860}
-          tall={form.template === "graph" || !!CONVERTIBLE_TEMPLATES[form.template]}
+          width={hasCanvas ? 1140 : 860}
+          tall={hasCanvas}
           onClose={() => setRuleOpen(false)}
           footer={
             <>
@@ -634,18 +638,20 @@ export default function RulesPage() {
             </>
           }
         >
-          <div className="rule-form">
+          <div className={"rule-form" + (hasCanvas ? " graph-rule-form" : "")}>
             <div className="pane-min">
+              {hasCanvas ? (
+                <div className="rule-section-heading">
+                  <span className="rule-step">1</span>
+                  <span>基本信息</span>
+                </div>
+              ) : null}
               <div className="form-grid">
                 <div>
-                  <label>规则 ID（留空自动分配）</label>
-                  <input
-                    style={{ width: "100%" }}
-                    type="number"
-                    disabled={!!editing}
-                    value={form.id}
-                    onChange={(e) => setFormPatch({ id: e.target.value })}
-                  />
+                  <label>规则编号</label>
+                  <div className="readonly-value">
+                    {editing ? `R${String(form.id).padStart(2, "0")}` : "保存后自动分配"}
+                  </div>
                 </div>
                 <div>
                   <label>严重度</label>
@@ -661,19 +667,23 @@ export default function RulesPage() {
                   </select>
                 </div>
               </div>
-              <label>规则名称</label>
-              <input
-                className="w320"
-                placeholder="如：门口有人靠近"
-                value={form.name}
-                onChange={(e) => setFormPatch({ name: e.target.value })}
-              />
-              <label>描述</label>
-              <input
-                style={{ width: "100%" }}
-                value={form.description}
-                onChange={(e) => setFormPatch({ description: e.target.value })}
-              />
+              <div className="rule-name-desc">
+                <div>
+                  <label>规则名称</label>
+                  <input
+                    placeholder="如：门口有人靠近"
+                    value={form.name}
+                    onChange={(e) => setFormPatch({ name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label>描述</label>
+                  <input
+                    value={form.description}
+                    onChange={(e) => setFormPatch({ description: e.target.value })}
+                  />
+                </div>
+              </div>
               {form.template !== "graph" &&
               !CONVERTIBLE_TEMPLATES[form.template] ? (
                 <>
@@ -710,25 +720,48 @@ export default function RulesPage() {
               </label>
             </div>
             <div className="pane-min">
-              <label>绑定模型（点选类别时自动勾选来源模型；也可手动调整）</label>
-              <div className="inline-checks">
-                {models.map((m) => (
-                  <label key={m}>
-                    <input
-                      type="checkbox"
-                      checked={form.models.includes(m)}
-                      onChange={() =>
-                        setFormPatch({
-                          models: form.models.includes(m)
-                            ? form.models.filter((x) => x !== m)
-                            : [...form.models, m],
-                        })
-                      }
-                    />{" "}
-                    {m}
-                  </label>
-                ))}
-              </div>
+              {hasCanvas ? (
+                <div className="rule-section-heading">
+                  <span className="rule-step">2</span>
+                  <span>规则</span>
+                  <span className="rule-help">
+                    <button type="button" className="rule-help-button" aria-label="规则画布使用说明">
+                      <Icon name="help-circle" size={15} />
+                    </button>
+                    <span className="rule-help-popover" role="tooltip">
+                      <b>使用说明</b>
+                      <span>点击左侧积木添加节点</span>
+                      <span>拖拽节点卡片调整位置</span>
+                      <span>点击输出点，再点目标节点连线</span>
+                      <span>点击连线可删除</span>
+                      <span>选中节点后在右侧编辑参数</span>
+                    </span>
+                  </span>
+                </div>
+              ) : null}
+              {hasCanvas ? null : (
+                <>
+                  <label>绑定模型（点选类别时自动勾选来源模型；也可手动调整）</label>
+                  <div className="inline-checks">
+                    {models.map((m) => (
+                      <label key={m}>
+                        <input
+                          type="checkbox"
+                          checked={form.models.includes(m)}
+                          onChange={() =>
+                            setFormPatch({
+                              models: form.models.includes(m)
+                                ? form.models.filter((x) => x !== m)
+                                : [...form.models, m],
+                            })
+                          }
+                        />{" "}
+                        {m}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
               {form.template !== "graph" &&
               !CONVERTIBLE_TEMPLATES[form.template] ? (
                 <ParamFields
@@ -744,22 +777,23 @@ export default function RulesPage() {
                   }}
                   onChange={(params) => setFormPatch({ params })}
                 />
-              ) : (
-                <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
-                  判定逻辑由下方画布决定：从积木库添加节点、连线组成检测链路，
-                  画布需要恰好一个「告警」节点。
-                </p>
-              )}
+              ) : null}
             </div>
           </div>
-          {form.template === "graph" || CONVERTIBLE_TEMPLATES[form.template] ? (
+          {hasCanvas ? (
             <GraphEditor
               graph={form.graph}
               onChange={(g) => setFormPatch({ graph: g })}
               nodeTypes={nodeTypes}
-              classOptions={classOptions}
+              models={models}
+              modelEnabled={modelEnabled}
+              modelsLoading={modelsLoading}
+              modelsLoadError={modelsLoadError}
+              modelClasses={modelClasses}
               cameras={cameras}
               loadError={nodeTypesFailed}
+              loading={!Object.keys(nodeTypes).length && !nodeTypesFailed}
+              requireModels={form.template === "graph"}
             />
           ) : null}
         </Modal>

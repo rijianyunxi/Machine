@@ -627,22 +627,26 @@ class RuntimeState:
                 "confidence_override": m.get("confidence_override"),
                 "load_status": self._load_jobs.get(name, {}).get("status"),
             }
+            persisted_classes = m.get("classes") or {}
+            status["classes"] = persisted_classes if isinstance(persisted_classes, dict) else {}
+            status["validation_status"] = m.get("validation_status", "unknown")
             if detector is not None and detector.is_loaded(name):
                 for d in detector.get_status():
                     if d["name"] == name:
+                        live_classes = d.get("classes") or {}
                         status.update({
                             "loaded": True,
                             "device": d["device"],
                             "confidence": d["confidence"],
                             "iou": d["iou"],
                             "img_size": d["img_size"],
-                            "classes": d["classes"],
+                            "classes": live_classes or status["classes"],
                         })
                         break
                 else:
                     status["loaded"] = False
             else:
-                status.update({"loaded": False, "device": None, "classes": {}})
+                status.update({"loaded": False, "device": None})
             out.append(status)
         return out
 
@@ -699,14 +703,38 @@ class RuntimeState:
                 from ultralytics import YOLO
 
                 model = YOLO(str(path))
+                classes = dict(model.names or {})
+                raw_imgsz = model.overrides.get("imgsz")
+                if isinstance(raw_imgsz, (list, tuple)):
+                    imgsz = list(raw_imgsz)
+                elif raw_imgsz is None:
+                    imgsz = []
+                else:
+                    imgsz = [raw_imgsz]
                 self._model_validations[filename] = {
                     "status": "有效",
                     "task": getattr(model, "task", "?"),
-                    "classes": dict(model.names or {}),
-                    "imgsz": list(model.overrides.get("imgsz", []) or []),
+                    "classes": classes,
+                    "imgsz": imgsz,
                 }
+                for registered in self.config_manager.repository.get_models():
+                    if registered.get("path") == f"models/{filename}":
+                        self.config_manager.repository.update_model_metadata(
+                            registered["name"], classes=classes,
+                            validation_status="valid", validation_error=None,
+                        )
+                        self.config_manager.refresh()
+                        break
             except Exception as e:
                 self._model_validations[filename] = {"status": "无效", "error": str(e)}
+                for registered in self.config_manager.repository.get_models():
+                    if registered.get("path") == f"models/{filename}":
+                        self.config_manager.repository.update_model_metadata(
+                            registered["name"], validation_status="invalid",
+                            validation_error=str(e),
+                        )
+                        self.config_manager.refresh()
+                        break
             finally:
                 self._validating.discard(filename)
 
@@ -730,6 +758,10 @@ class RuntimeState:
         if not re.fullmatch(r"[\w\-]+", name or ""):
             raise ValueError("模型名称只能使用字母/数字/下划线/连字符")
         entry = {"name": name, "path": f"models/{file}", "enabled": bool(enabled)}
+        cached = self._model_validations.get(file) or {}
+        if cached.get("status") == "有效" and isinstance(cached.get("classes"), dict):
+            entry["classes"] = dict(cached["classes"])
+            entry["validation_status"] = "valid"
         if confidence_override is not None:
             entry["confidence_override"] = float(confidence_override)
         if expected_revision is not None:
@@ -848,8 +880,8 @@ class RuntimeState:
         if template not in self.template_specs():
             raise ValueError(f"未知模板: {template}")
         rule = RuleDefinition(
-            id=int(data.get("id") or self.config_manager.repository.next_rule_id()),
-            name=str(data.get("name") or f"rule_{data.get('id')}"),
+            id=int(data["id"]) if data.get("id") not in (None, "") else 0,
+            name=str(data.get("name") or "未命名规则"),
             description=str(data.get("description", "")),
             template=template,
             models=[str(m) for m in data.get("models", [])],
@@ -858,13 +890,16 @@ class RuntimeState:
             severity=int(data.get("severity", 2)),
             enabled=bool(data.get("enabled", True)),
         )
-        _saved, revision, _snapshot = self.config_manager.add_rule({
-            "id": rule.id, "name": rule.name, "description": rule.description,
+        payload = {
+            "name": rule.name, "description": rule.description,
             "category": rule.category, "template": rule.template,
             "models": rule.models, "params": rule.params, "graph": rule.graph,
             "severity": rule.severity, "enabled": rule.enabled,
-        })
-        return {"id": rule.id, "revision": int(rule.revision)}
+        }
+        if data.get("id") not in (None, ""):
+            payload["id"] = rule.id
+        _saved, revision, _snapshot = self.config_manager.add_rule(payload)
+        return {"id": int(_saved.id), "revision": int(revision)}
 
     def update_rule(self, rule_id: int, fields: dict) -> dict:
         fields = dict(fields or {})

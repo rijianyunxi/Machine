@@ -48,6 +48,13 @@ def create_app(state: RuntimeState) -> FastAPI:
                    llm_api.router):
         app.include_router(router)
 
+    @app.middleware("http")
+    async def prevent_stale_spa_assets(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/app/assets/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return response
+
     # snapshot files (root-confined to save_dir)
     snapshots_dir = state.snapshots_dir()
     snapshots_dir.mkdir(parents=True, exist_ok=True)

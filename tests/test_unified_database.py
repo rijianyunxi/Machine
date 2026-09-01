@@ -60,7 +60,8 @@ class UnifiedDatabaseTests(unittest.TestCase):
 
     def test_empty_database_migrates_and_pragmas_are_enabled(self):
         with tempfile.TemporaryDirectory() as td:
-            db = MachineDatabase(Path(td) / "machine.db")
+            path = Path(td) / "machine.db"
+            db = MachineDatabase(path)
             with db.connection() as conn:
                 tables = {
                     row[0]
@@ -76,8 +77,42 @@ class UnifiedDatabaseTests(unittest.TestCase):
                 self.assertEqual(conn.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
                 self.assertEqual(
                     conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0],
-                    2,
+                    3,
                 )
+                self.assertEqual(
+                    conn.execute("SELECT COUNT(*) FROM rule_templates WHERE code = 'graph'").fetchone()[0],
+                    1,
+                )
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0], 0)
+            MachineDatabase(path)
+            with db.connection() as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM rule_templates WHERE code = 'graph'").fetchone()[0], 1)
+
+    def test_empty_graph_rule_can_be_saved_without_user_rule_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = MachineDatabase(Path(td) / "machine.db")
+            repo = ConfigRepository(db)
+            graph = {
+                "nodes": [
+                    {"id": "source", "type": "class_present", "model": "ppe",
+                     "params": {"classes": ["Person"]}},
+                    {"id": "alert", "type": "alert", "params": {}},
+                ],
+                "edges": [{"from": "source", "to": "alert"}],
+            }
+            with db.transaction() as conn:
+                now = 1
+                conn.execute(
+                    "INSERT INTO models(name, file_path, enabled, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+                    ("ppe", "models/ppe.pt", now, now),
+                )
+            rule, _ = repo.add_rule({
+                "name": "未戴安全帽", "template": "graph", "models": [],
+                "params": {}, "graph": graph, "severity": 3, "enabled": True,
+            })
+            self.assertEqual(rule.id, 1)
+            self.assertEqual(rule.models, ["ppe"])
+            self.assertEqual(repo.get_rule_by_id(1).graph["nodes"][0]["model"], "ppe")
 
     def test_failed_migration_rolls_back_schema(self):
         original = MachineDatabase._migration_v1
@@ -284,7 +319,7 @@ class UnifiedDatabaseTests(unittest.TestCase):
             self.assertEqual(alert_db.get_alert_count(), 1)
             with db.connection() as conn:
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0], 1)
-                self.assertEqual(conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0], 2)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0], 3)
 
 
     def test_object_revisions_and_independent_updates(self):

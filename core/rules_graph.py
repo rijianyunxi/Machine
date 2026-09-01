@@ -16,7 +16,7 @@ conditions independent when the same rule is assigned to multiple cameras.
 
 import copy
 import math
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from core.detector import Detection
 from utils.logger import get_logger
@@ -34,6 +34,7 @@ NODE_TYPES: Dict[str, dict] = {
     "class_present": {
         "label": "类别在场",
         "category": "目标",
+        "model_binding": True,
         "inputs": 0,
         "outputs": 1,
         "params": [
@@ -46,6 +47,7 @@ NODE_TYPES: Dict[str, dict] = {
     "class_covering": {
         "label": "装备覆盖检查",
         "category": "目标",
+        "model_binding": True,
         "inputs": 0,
         "outputs": 1,
         "params": [
@@ -63,6 +65,7 @@ NODE_TYPES: Dict[str, dict] = {
     "class_absent": {
         "label": "类别离场",
         "category": "目标",
+        "model_binding": True,
         "inputs": 0,
         "outputs": 1,
         "params": [
@@ -75,6 +78,7 @@ NODE_TYPES: Dict[str, dict] = {
     "near_class": {
         "label": "靠近参照类别",
         "category": "空间",
+        "model_binding": True,
         "inputs": 1,
         "outputs": 1,
         "params": [
@@ -195,8 +199,18 @@ def _validate_graph_value(spec: dict, value, *, label: str):
     raise ValueError(f"graph 节点参数类型不支持: {ptype}")
 
 
-def validate_graph(graph: dict) -> dict:
-    """Validate and normalize a graph before it enters the runtime snapshot."""
+def validate_graph(
+    graph: dict,
+    available_models: Optional[Iterable[str]] = None,
+    *,
+    require_models: bool = False,
+) -> dict:
+    """Validate and normalize a graph before it enters the runtime snapshot.
+
+    ``available_models`` is optional to preserve compatibility with callers that
+    validate graph structure without a model registry. New rules pass it with
+    ``require_models=True`` so every detector node has an explicit model.
+    """
     if not isinstance(graph, dict):
         raise ValueError("规则 graph 必须是对象")
     raw_nodes = graph.get("nodes")
@@ -209,6 +223,10 @@ def validate_graph(graph: dict) -> dict:
     normalized = copy.deepcopy(graph)
     nodes = []
     node_map = {}
+    available_model_names = (
+        {str(name).strip() for name in available_models if str(name).strip()}
+        if available_models is not None else None
+    )
     for node in raw_nodes:
         if not isinstance(node, dict):
             raise ValueError("graph 节点必须是对象")
@@ -225,6 +243,21 @@ def validate_graph(graph: dict) -> dict:
         if not isinstance(params, dict):
             raise ValueError(f"graph 节点 {node_id} params 必须是对象")
         schema = NODE_TYPES[node_type]
+        model_binding = bool(schema.get("model_binding"))
+        raw_model = node.get("model")
+        if model_binding:
+            if raw_model is None or not str(raw_model).strip():
+                if require_models:
+                    raise ValueError(f"graph 检测节点 {node_id} 必须选择检测模型")
+                model = None
+            else:
+                model = str(raw_model).strip()
+                if available_model_names is not None and model not in available_model_names:
+                    raise ValueError(f"graph 节点 {node_id} 引用了不存在的模型: {model}")
+        elif raw_model is not None:
+            raise ValueError(f"graph 逻辑节点 {node_id} 不支持绑定检测模型")
+        else:
+            model = None
         param_specs = {p["name"]: p for p in schema.get("params", [])}
         unknown = sorted(set(params) - set(param_specs))
         if unknown:
@@ -238,6 +271,20 @@ def validate_graph(graph: dict) -> dict:
         clean_node = copy.deepcopy(node)
         clean_node["id"] = node_id
         clean_node["params"] = clean_params
+        if model_binding:
+            required_params = {
+                "class_present": ("classes",),
+                "class_absent": ("classes",),
+                "class_covering": ("classes", "ref_classes"),
+                "near_class": ("ref_classes",),
+            }.get(node_type, ())
+            for pname in required_params:
+                if not clean_params.get(pname):
+                    raise ValueError(f"graph 节点 {node_id} 的 {pname} 不能为空")
+            if model is None:
+                clean_node.pop("model", None)
+            else:
+                clean_node["model"] = model
         nodes.append(clean_node)
         node_map[node_id] = clean_node
 
@@ -339,8 +386,10 @@ def _topo_sort(node_map: dict, edges: list):
 # ============================================================
 
 def _eval_class_presence(params: dict, detections: List[Detection],
-                         absent: bool) -> dict:
+                         absent: bool, model: Optional[str] = None) -> dict:
     """class_present / class_absent：类别在场或全部离场。"""
+    if model:
+        detections = [d for d in detections if d.model_name == model]
     classes = _lower_set(params.get("classes"))
     if not classes:
         return _false_signal()  # classes 必填，缺省视为不命中
@@ -354,9 +403,12 @@ def _eval_class_presence(params: dict, detections: List[Detection],
     return {"state": bool(hits), "targets": hits}
 
 
-def _eval_class_covering(params: dict, detections: List[Detection]) -> dict:
+def _eval_class_covering(params: dict, detections: List[Detection],
+                          model: Optional[str] = None) -> dict:
     """class_covering：参照目标在场且**全部**被装备框覆盖（按面积比）。
     语义对齐 AbsenceRequiredCheck：任一参照目标缺装备即 state=false。"""
+    if model:
+        detections = [d for d in detections if d.model_name == model]
     gear_classes = _lower_set(params.get("classes"))
     ref_classes = _lower_set(params.get("ref_classes"))
     ratio = params.get("coverage_ratio", 0.5)
@@ -400,9 +452,12 @@ def _center_in_zones(bbox: tuple, zones: list, fw: float, fh: float) -> bool:
 
 
 def _eval_near_class(params: dict, input_signal: dict,
-                     detections: List[Detection]) -> dict:
+                     detections: List[Detection], model: Optional[str] = None) -> dict:
     """near_class：输入 targets 与参照类别检出框（按 margin 外扩）相交。"""
-    targets = list(input_signal.get("targets") or [])
+    if model:
+        detections = [d for d in detections if d.model_name == model]
+    targets = [d for d in (input_signal.get("targets") or [])
+               if not model or d.model_name == model]
     if not targets:
         return _false_signal()
     ref_classes = _lower_set(params.get("ref_classes"))
@@ -461,16 +516,18 @@ def _eval_node(node_id, node: dict, inputs: List[dict],
     if NODE_TYPES[ntype]["inputs"] > 0 and not inputs:
         return _false_signal()  # 必需输入未连线：视为恒假，避免空图误报
     params = node.get("params") or {}
+    model = node.get("model")
 
     if ntype in ("class_present", "class_absent"):
-        return _eval_class_presence(params, detections,
-                                    absent=(ntype == "class_absent"))
+        return _eval_class_presence(
+            params, detections, absent=(ntype == "class_absent"), model=model,
+        )
     if ntype == "class_covering":
-        return _eval_class_covering(params, detections)
+        return _eval_class_covering(params, detections, model=model)
     if ntype == "in_zone":
         return _eval_in_zone(params, inputs[0], frame_size)
     if ntype == "near_class":
-        return _eval_near_class(params, inputs[0], detections)
+        return _eval_near_class(params, inputs[0], detections, model=model)
     if ntype == "duration":
         return _eval_duration(params, inputs[0], timestamp,
                               key=(camera_id, rule_id, node_id))

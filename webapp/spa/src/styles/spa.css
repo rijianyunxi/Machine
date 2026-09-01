@@ -69,12 +69,12 @@
 
 /* 亮色下主按钮改为参考站的近黑实心（含 mini 尺寸，保持主次一致）。
  * :not() 排除所有"非实心主按钮"的自定义控件，避免它们被染成黑块。 */
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.preset-card):not(.graph-pal-item) {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item) {
   background: #232425;
   border-color: #232425;
   color: #fff;
 }
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.preset-card):not(.graph-pal-item):hover {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item):hover {
   background: #35373a;
   filter: none;
 }
@@ -598,6 +598,21 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .model-card .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .model-card .head b { font-size: 14px; }
 .model-card .meta { color: var(--muted); font-size: 12px; margin: 7px 0; word-break: break-all; }
+.model-classes {
+  margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 9px; background: var(--surface);
+}
+.model-classes-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--text-2); font-size: 11.5px; font-weight: 600;
+}
+.model-class-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px;
+}
+.model-class-tags .chip { margin: 0; }
+.model-classes-empty {
+  display: block; margin-top: 8px; color: var(--muted); font-size: 11.5px;
+}
 .model-card .ops { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .model-card .ops label { margin: 0; }
 
@@ -723,6 +738,62 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .rule-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
 @media (max-width: 860px) { .rule-form { grid-template-columns: 1fr; } }
 .rule-form .pane-min { min-width: 0; }
+.rule-name-desc {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 16px;
+}
+.rule-name-desc input { width: 100%; }
+@media (max-width: 640px) {
+  .rule-name-desc { grid-template-columns: 1fr; }
+}
+.rule-section-heading {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  color: var(--text); font-size: 13px; font-weight: 700;
+}
+.rule-step {
+  display: inline-grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-weight: 700;
+}
+.rule-help { position: relative; display: inline-flex; align-items: center; }
+.rule-help-button {
+  width: 22px; height: 22px; padding: 2px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--muted); cursor: help;
+}
+.rule-help-button:hover, .rule-help-button:focus-visible { color: var(--accent); background: var(--accent-soft); filter: none; }
+.rule-help-popover {
+  position: absolute; left: 28px; top: 50%; z-index: 30; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 4px; width: 230px; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-3);
+  box-shadow: var(--shadow); color: var(--text-2); font-size: 11.5px; line-height: 1.45;
+  visibility: hidden; opacity: 0; pointer-events: none; transition: opacity .12s ease;
+}
+.rule-help-popover b { color: var(--text); font-size: 12px; }
+.rule-help:hover .rule-help-popover, .rule-help:focus-within .rule-help-popover {
+  visibility: visible; opacity: 1;
+}
+.graph-rule-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px 0;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+}
+.rule-section-title {
+  margin: 0 0 8px; color: var(--text); font-size: 12.5px; font-weight: 700;
+}
+.readonly-value {
+  min-height: 34px; display: flex; align-items: center; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px; color: var(--muted);
+  background: var(--surface); font-size: 12px;
+}
+.field-hint { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.field-hint.error { color: var(--red); }
+.required { color: var(--red); font-size: 10.5px; font-weight: 600; }
+.tag-input.is-disabled { opacity: .72; }
+.tag-input.is-disabled .tag-sugs { display: none; }
+.node-model-field { padding-bottom: 2px; border-bottom: 1px solid var(--border); }
+@media (max-width: 860px) {
+  .rule-form { gap: 14px; }
+}
 /* 模板紧凑卡：操作按钮不被挤出 */
 .tpl-item .head .ops { margin-left: auto; flex-shrink: 0; }
 .tpl-item .logic span { min-width: 0; }
@@ -909,19 +980,6 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
   border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px;
   color: var(--green); font-size: 12px;
 }
-
-/* ============ 预设画廊 ============ */
-.preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-@media (max-width: 880px) { .preset-grid { grid-template-columns: repeat(2, 1fr); } }
-.preset-card {
-  text-align: left; cursor: pointer; background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 6px;
-}
-.preset-card:hover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.preset-card b { font-size: 13px; color: var(--text); }
-.preset-card span { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
-.preset-card.blank { border-style: dashed; }
 
 /* ============ 数据集图片管理 ============ */
 .img-mgr-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }

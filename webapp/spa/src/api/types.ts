@@ -33,10 +33,11 @@ export interface TemplateSpec {
 
 /* ---------- 可视化规则画布（契约 docs/RULE_GRAPH_DESIGN.md §2/§5） ---------- */
 
-/** 图节点：id 为图内唯一标识；params 按节点类型 schema 取值 */
+/** 图节点：id 为图内唯一标识；检测节点可绑定一个检测模型。 */
 export interface GraphNode {
   id: string;
   type: string;
+  model?: string;
   params: Record<string, unknown>;
 }
 
@@ -68,6 +69,7 @@ export interface GraphNodeTypeSpec {
   category: string; // 中文分类：目标/空间/时间/逻辑/输出
   inputs: number;
   outputs: number;
+  model_binding?: boolean;
   params: GraphParamSpec[];
 }
 

@@ -60,7 +60,8 @@ class ConfigRepository:
                     "SELECT section, value_json FROM settings_sections ORDER BY section"
                 ).fetchall()
                 model_rows = conn.execute(
-                    "SELECT name, file_path, enabled, confidence_override, revision FROM models ORDER BY id"
+                    "SELECT name, file_path, enabled, confidence_override, classes_json, "
+                    "validation_status, validation_error, revision FROM models ORDER BY id"
                 ).fetchall()
                 camera_rows = conn.execute(
                     "SELECT id, name, source_uri, config_json, enabled, revision, deleted_at "
@@ -90,10 +91,20 @@ class ConfigRepository:
 
         models = []
         for row in model_rows:
-            item = {"name": row[0], "path": row[1], "enabled": bool(row[2])}
+            try:
+                classes = json.loads(row[4] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                classes = {}
+            item = {
+                "name": row[0], "path": row[1], "enabled": bool(row[2]),
+                "classes": classes if isinstance(classes, dict) else {},
+                "validation_status": str(row[5] or "unknown"),
+            }
             if row[3] is not None:
                 item["confidence_override"] = row[3]
-            item["revision"] = int(row[4])
+            if row[6]:
+                item["validation_error"] = str(row[6])
+            item["revision"] = int(row[7])
             models.append(item)
 
         settings = {}
@@ -513,17 +524,26 @@ class ConfigRepository:
     def get_models(self) -> list[dict]:
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT name, file_path, enabled, confidence_override, revision "
+                "SELECT name, file_path, enabled, confidence_override, classes_json, "
+                "validation_status, validation_error, revision "
                 "FROM models ORDER BY id"
             ).fetchall()
         result = []
         for row in rows:
+            try:
+                classes = json.loads(row[4] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                classes = {}
             item = {
                 "name": row[0], "path": row[1], "enabled": bool(row[2]),
+                "classes": classes if isinstance(classes, dict) else {},
+                "validation_status": str(row[5] or "unknown"),
             }
             if row[3] is not None:
                 item["confidence_override"] = row[3]
-            item["revision"] = int(row[4])
+            if row[6]:
+                item["validation_error"] = str(row[6])
+            item["revision"] = int(row[7])
             result.append(item)
         return result
 
@@ -537,14 +557,54 @@ class ConfigRepository:
             if conn.execute("SELECT 1 FROM models WHERE name = ?", (name,)).fetchone():
                 raise ValueError(f"模型名称已存在: {name}")
             now = int(time.time())
+            classes = entry.get("classes") or {}
+            if not isinstance(classes, dict):
+                raise ValueError("模型 classes 必须是对象")
             conn.execute(
-                "INSERT INTO models(name, file_path, model_type, enabled, confidence_override, created_at, updated_at) "
-                "VALUES (?, ?, 'yolo', ?, ?, ?, ?)",
+                "INSERT INTO models(name, file_path, model_type, enabled, confidence_override, "
+                "classes_json, validation_status, validation_error, created_at, updated_at) "
+                "VALUES (?, ?, 'yolo', ?, ?, ?, ?, ?, ?, ?)",
                 (name, path, int(bool(entry.get("enabled", True))),
-                 entry.get("confidence_override"), now, now),
+                 entry.get("confidence_override"), _json(classes),
+                 str(entry.get("validation_status") or "unknown"),
+                 entry.get("validation_error"), now, now),
             )
             revision = self.database.bump_revision(conn)
             self._audit(conn, "model", name, None, entry, actor, revision)
+        return next(m for m in self.get_models() if m["name"] == name)
+
+    def update_model_metadata(
+        self, name: str, *, classes: dict | None = None,
+        validation_status: str | None = None, validation_error: str | None = None,
+        actor: str = "model-validation",
+    ) -> dict:
+        name = str(name).strip()
+        with self.database.transaction() as conn:
+            row = conn.execute(
+                "SELECT name, classes_json, validation_status, validation_error, revision "
+                "FROM models WHERE name = ?", (name,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"模型未注册: {name}")
+            old_classes = json.loads(row[1] or "{}") if row[1] else {}
+            next_classes = old_classes if classes is None else classes
+            if not isinstance(next_classes, dict):
+                raise ValueError("模型 classes 必须是对象")
+            next_status = str(validation_status or row[2] or "unknown")
+            next_error = validation_error
+            now = int(time.time())
+            conn.execute(
+                "UPDATE models SET classes_json = ?, validation_status = ?, "
+                "validation_error = ?, revision = revision + 1, updated_at = ? WHERE name = ?",
+                (_json(next_classes), next_status, next_error, now, name),
+            )
+            revision = self.database.bump_revision(conn)
+            self._audit(
+                conn, "model", name,
+                {"classes": old_classes, "validation_status": row[2], "validation_error": row[3]},
+                {"classes": next_classes, "validation_status": next_status, "validation_error": next_error},
+                actor, revision,
+            )
         return next(m for m in self.get_models() if m["name"] == name)
 
     def update_model(self, name: str, fields: dict, *, actor: str = "panel",
@@ -864,10 +924,12 @@ class ConfigRepository:
         if missing:
             raise ValueError(f"规则引用了不存在的模型: {', '.join(missing)}")
         try:
-            rule_id = int(data["id"])
+            rule_id = int(data.get("id") or 0)
             severity = int(data.get("severity", 2))
-        except (KeyError, TypeError, ValueError) as exc:
+        except (TypeError, ValueError) as exc:
             raise ValueError("规则 id 和 severity 必须是数字") from exc
+        if rule_id < 0:
+            raise ValueError("规则 id 不能为负数")
         params = validate_rule_params(template_spec, data.get("params", {}) or {})
         raw_graph = data.get("graph", {}) or {}
         if not isinstance(raw_graph, dict):
@@ -875,7 +937,16 @@ class ConfigRepository:
         if str(template_spec.get("logic", "")) == "graph":
             if not raw_graph:
                 raise ValueError("graph 模板必须提供非空 graph")
-            graph = validate_graph(raw_graph)
+            graph = validate_graph(
+                raw_graph,
+                available_models=available,
+                require_models=template == "graph",
+            )
+            if template == "graph":
+                model_names = list(dict.fromkeys(
+                    node["model"] for node in graph["nodes"]
+                    if node.get("model")
+                ))
         else:
             if raw_graph:
                 raise ValueError("只有 graph 模板允许配置 graph")
@@ -892,6 +963,9 @@ class ConfigRepository:
     def add_rule(self, data: dict, *, actor: str = "panel"):
         rule = self._normalize_rule(data)
         with self.database.transaction() as conn:
+            if rule.id <= 0:
+                row = conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM rules").fetchone()
+                rule.id = int(row[0]) if row else 1
             if conn.execute("SELECT 1 FROM rules WHERE id = ?", (rule.id,)).fetchone():
                 raise ValueError(f"规则 ID 已存在: {rule.id}")
             now = int(time.time())
@@ -1245,7 +1319,20 @@ class ConfigRepository:
                     (model["name"], model["path"], int(model.get("enabled", True)),
                      model.get("confidence_override"), now, now),
                 )
-            for code, spec in normalized_templates.items():
+            templates_to_insert = dict(normalized_templates)
+            if "graph" not in templates_to_insert:
+                graph_exists = conn.execute(
+                    "SELECT 1 FROM rule_templates WHERE code = 'graph'"
+                ).fetchone()
+                if graph_exists is None:
+                    templates_to_insert["graph"] = {
+                        "label": "画布自定义组合", "logic": "graph", "params": []
+                    }
+            for code, spec in templates_to_insert.items():
+                if code == "graph" and conn.execute(
+                    "SELECT 1 FROM rule_templates WHERE code = 'graph'"
+                ).fetchone():
+                    continue
                 conn.execute(
                     """
                     INSERT INTO rule_templates

@@ -17,10 +17,17 @@ export interface GraphEditorProps {
   graph: RuleGraph;
   onChange: (g: RuleGraph) => void;
   nodeTypes: Record<string, GraphNodeTypeSpec>;
-  classOptions: string[];
+  models: string[];
+  modelEnabled?: Record<string, boolean>;
+  modelsLoading?: boolean;
+  modelsLoadError?: boolean;
+  modelClasses: Record<string, string[]>;
   cameras: { id: string; name: string }[];
   /** 节点库（GET /api/rules/node-types）加载失败标记 */
   loadError?: boolean;
+  loading?: boolean;
+  /** 原生 graph 新建/编辑要求检测节点显式绑定模型；旧模板转换保持兼容 */
+  requireModels?: boolean;
 }
 
 interface Pt {
@@ -52,6 +59,8 @@ const edgeKey = (e: GraphEdge) => `${e.from}>${e.to}`;
 export function validateGraph(
   graph: RuleGraph,
   nodeTypes: Record<string, GraphNodeTypeSpec>,
+  models: string[] = [],
+  requireModels = true,
 ): string[] {
   const errs: string[] = [];
   const ids = new Set(graph.nodes.map((n) => n.id));
@@ -90,6 +99,14 @@ export function validateGraph(
 
   /* 安全兜底：类别节点 classes 为空会导致永不触发/常触发 */
   for (const n of graph.nodes) {
+    const spec = nodeTypes[n.type];
+    if (spec?.model_binding) {
+      if (requireModels && !n.model) errs.push(`节点 ${n.id}（${spec.label || n.type}）必须选择检测模型`);
+      else if (!models.includes(n.model || ""))
+        errs.push(`节点 ${n.id} 引用了不存在的检测模型：${n.model}`);
+    } else if (n.model) {
+      errs.push(`节点 ${n.id}（${spec?.label || n.type}）不支持绑定检测模型`);
+    }
     if (n.type === "class_present" || n.type === "class_absent") {
       const cs = n.params?.classes;
       if (!Array.isArray(cs) || !cs.length)
@@ -97,6 +114,15 @@ export function validateGraph(
           `节点 ${n.id}（${nodeTypes[n.type]?.label || n.type}）至少要选择一个类别`,
         );
     }
+    if (n.type === "class_covering") {
+      for (const key of ["classes", "ref_classes"]) {
+        if (!Array.isArray(n.params?.[key]) || !n.params?.[key]?.length)
+          errs.push(`节点 ${n.id} 的 ${key} 至少要选择一个类别`);
+      }
+    }
+    if (n.type === "near_class" &&
+        (!Array.isArray(n.params?.ref_classes) || !n.params?.ref_classes?.length))
+      errs.push(`节点 ${n.id} 的参照类别至少要选择一个类别`);
   }
   return errs;
 }
@@ -160,6 +186,7 @@ function edgeMid(a: Pt, b: Pt): Pt {
 /* 节点卡片第二行：参数摘要 */
 function summarize(node: GraphNode, spec: GraphNodeTypeSpec | undefined): string {
   const parts: string[] = [];
+  if (node.model) parts.push(`模型：${node.model}`);
   for (const p of spec?.params || []) {
     const v = node.params?.[p.name];
     if (v === undefined || v === null || v === "") continue;
@@ -182,10 +209,12 @@ function ClassChips({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   value: string[];
   options: string[];
   onChange: (v: string[]) => void;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const add = (raw: string) => {
@@ -198,7 +227,7 @@ function ClassChips({
     (o) => !value.some((v) => v.toLowerCase() === o.toLowerCase()),
   );
   return (
-    <div className="tag-input">
+    <div className={"tag-input" + (disabled ? " is-disabled" : "")}>
       {value.length ? (
         <div className="tag-rows">
           {value.map((v) => (
@@ -207,6 +236,7 @@ function ClassChips({
               <button
                 type="button"
                 title="移除"
+                disabled={disabled}
                 onClick={() => onChange(value.filter((x) => x !== v))}
               >
                 <Icon name="x" size={10} />
@@ -217,22 +247,24 @@ function ClassChips({
       ) : null}
       {fresh.length ? (
         <div className="tag-sugs">
-          {fresh.slice(0, 8).map((o) => (
-            <button key={o} type="button" className="mini ghost" onClick={() => add(o)}>
+          {fresh.map((o) => (
+            <button
+              key={o}
+              type="button"
+              className="mini ghost"
+              disabled={disabled}
+              onClick={() => add(o)}
+            >
               + {o}
             </button>
           ))}
-          {fresh.length > 8 ? (
-            <span className="muted" style={{ fontSize: 11 }}>
-              还有 {fresh.length - 8} 个…
-            </span>
-          ) : null}
         </div>
       ) : null}
       <input
         style={{ width: "100%" }}
         value={draft}
-        placeholder="输入类别后回车添加"
+        placeholder={disabled ? "请先选择检测模型" : "输入类别后回车添加"}
+        disabled={disabled}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -255,9 +287,15 @@ export function GraphEditor({
   graph,
   onChange,
   nodeTypes,
-  classOptions,
+  models,
+  modelEnabled = {},
+  modelsLoading = false,
+  modelsLoadError = false,
+  modelClasses,
   cameras,
   loadError,
+  loading = false,
+  requireModels = true,
 }: GraphEditorProps) {
   const [pos, setPos] = useState<Record<string, Pt>>({});
   const [sel, setSel] = useState<Sel>(null);
@@ -273,10 +311,13 @@ export function GraphEditor({
   const confirm = useConfirm();
 
   const specs = Object.values(nodeTypes);
-  const emptyLib = loadError || specs.length === 0;
+  const emptyLib = loadError || (!loading && specs.length === 0);
 
   const specOf = (type: string) => nodeTypes[type];
   const labelOf = (n: GraphNode) => nodeTypes[n.type]?.label || n.type;
+  const isModelNode = (n: GraphNode) =>
+    Boolean(nodeTypes[n.type]?.model_binding) ||
+    ["class_present", "class_absent", "class_covering", "near_class"].includes(n.type);
 
   const flash = (m: string) => {
     setHint(m);
@@ -349,8 +390,8 @@ export function GraphEditor({
   }, []);
 
   const errs = useMemo(
-    () => (emptyLib ? [] : validateGraph(graph, nodeTypes)),
-    [graph, nodeTypes, emptyLib],
+    () => (emptyLib ? [] : validateGraph(graph, nodeTypes, models, requireModels)),
+    [graph, nodeTypes, models, requireModels, emptyLib],
   );
 
   /* ---------- 分组积木库 ---------- */
@@ -371,7 +412,12 @@ export function GraphEditor({
     const id = nextNodeId(graph.nodes);
     onChange({
       ...graph,
-      nodes: [...graph.nodes, { id, type, params: defaultParams(nodeTypes[type]) }],
+      nodes: [...graph.nodes, {
+        id,
+        type,
+        params: defaultParams(nodeTypes[type]),
+        ...(nodeTypes[type]?.model_binding ? { model: "" } : {}),
+      }],
     });
     setSel({ kind: "node", id });
   };
@@ -501,18 +547,41 @@ export function GraphEditor({
   const selEdge =
     sel?.kind === "edge" ? graph.edges.find((e) => edgeKey(e) === sel.key) : undefined;
 
-  /* ---------- 节点库失败 ---------- */
-  if (emptyLib)
+  /* ---------- 节点库加载状态 ---------- */
+  if (loading || emptyLib)
     return (
       <div className="graph-wrap">
-        <div className="graph-editor is-err">
-          节点库加载失败（GET /api/rules/node-types），请刷新页面重试；保存已禁用。
+        <div className={"graph-editor is-err" + (loading ? " is-loading" : "") }>
+          {loading ? "正在加载画布节点…" : "节点库加载失败（GET /api/rules/node-types），请刷新页面重试；保存已禁用。"}
         </div>
       </div>
     );
 
   const selNode = sel?.kind === "node" ? graph.nodes.find((n) => n.id === sel.id) : undefined;
   const selNodeSpec = selNode ? nodeTypes[selNode.type] : undefined;
+  const selectedModel = selNode?.model || "";
+  const selectedClasses = selectedModel ? modelClasses[selectedModel] || [] : [];
+  const modelOptions = models;
+
+  const updateNodeModel = (model: string) => {
+    if (!selNode) return;
+    const allowed = new Set(modelClasses[model] || []);
+    const nextParams = Object.fromEntries(
+      Object.entries(selNode.params).map(([name, value]) =>
+        Array.isArray(value) && (name === "classes" || name === "ref_classes")
+          ? [name, value.filter((item) => allowed.has(String(item)))]
+          : [name, value],
+      ),
+    );
+    onChange({
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.id === selNode.id
+          ? { ...n, model: model || undefined, params: nextParams }
+          : n,
+      ),
+    });
+  };
 
   return (
     <div className="graph-wrap">
@@ -695,6 +764,30 @@ export function GraphEditor({
                 {labelOf(selNode)}
                 <span className="mono">{selNode.id}</span>
               </h4>
+              {isModelNode(selNode) ? (
+                <div className="field node-model-field">
+                  <label>检测模型 <span className="required">必选</span></label>
+                  <select
+                    style={{ width: "100%" }}
+                    value={selectedModel}
+                    onChange={(e) => updateNodeModel(e.target.value)}
+                  >
+                    <option value="">请选择模型</option>
+                    {models.map((model) => (
+                      <option key={model} value={model}>
+                        {model}{modelEnabled[model] === false ? "（已停用）" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {modelsLoading ? (
+                    <p className="field-hint">正在加载模型列表…</p>
+                  ) : modelsLoadError ? (
+                    <p className="field-hint error">模型列表加载失败，请刷新页面后重试。</p>
+                  ) : !models.length ? (
+                    <p className="field-hint error">尚未注册模型，请先到模型管理添加模型。</p>
+                  ) : null}
+                </div>
+              ) : null}
               {selNodeSpec?.params.length ? (
                 selNodeSpec.params.map((p) => {
                   const val =
@@ -706,9 +799,13 @@ export function GraphEditor({
                     return (
                       <div className="field" key={p.name}>
                         <label>{p.desc || p.name}</label>
+                        {!selectedModel ? (
+                          <p className="field-hint">请先选择检测模型，类别列表将在此处显示。</p>
+                        ) : null}
                         <ClassChips
                           value={arr}
-                          options={classOptions}
+                          options={selectedClasses}
+                          disabled={!selectedModel}
                           onChange={(v) =>
                             setNodeParams(selNode.id, { ...selNode.params, [p.name]: v })
                           }
@@ -784,13 +881,7 @@ export function GraphEditor({
             </>
           ) : (
             <div className="tips">
-              <p style={{ fontWeight: 600, color: "var(--text-2)" }}>使用说明</p>
-              <p>· 点击左侧积木添加节点</p>
-              <p>· 拖拽节点卡片调整位置</p>
-              <p>· 点击节点右侧输出点，再点目标节点完成连线</p>
-              <p>· 点击连线选中后可删除</p>
-              <p>· 选中节点在此编辑参数</p>
-              <p>· 画布需要恰好一个「告警」节点作为终点</p>
+              选择一个节点查看参数
             </div>
           )}
         </aside>

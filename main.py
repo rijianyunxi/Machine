@@ -357,6 +357,16 @@ class MachineVisionSystem:
                 # bound models + any loaded model that supplies the rule's
                 # cross-model classes (e.g. Person from the PPE model).
                 models_needed = {m for r in rule_defs for m in r.models}
+                for rule in rule_defs:
+                    template = snapshot.templates.get(rule.template, {})
+                    if template.get("logic") != "graph":
+                        continue
+                    graph_models = {
+                        str(node.get("model")).strip()
+                        for node in (rule.graph or {}).get("nodes", [])
+                        if isinstance(node, dict) and str(node.get("model") or "").strip()
+                    }
+                    models_needed.update(graph_models)
                 person_classes = {
                     c for r in rule_defs
                     for c in (r.params or {}).get("person_classes", [])

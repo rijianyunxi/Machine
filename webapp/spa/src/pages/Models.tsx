@@ -199,14 +199,29 @@ export default function ModelsPage() {
                     置信度覆盖：<span className="mono">{m.confidence_override}</span>
                   </div>
                 ) : null}
-                <div className="meta">
-                  类别 {Object.keys(m.classes || {}).length}：
-                  {Object.entries(m.classes || {}).slice(0, 12).map(([id, name]) => (
-                    <Chip key={id} text={`${id}:${name}`} />
-                  )) || "—"}
-                  {Object.keys(m.classes || {}).length > 12 ? (
-                    <span className="muted">…</span>
-                  ) : null}
+                <div className="model-classes">
+                  <div className="model-classes-head">
+                    <span>检测类别</span>
+                    <Chip
+                      text={`${Object.keys(m.classes || {}).length} 类`}
+                      color="blue"
+                    />
+                  </div>
+                  {Object.keys(m.classes || {}).length ? (
+                    <div className="model-class-tags">
+                      {Object.entries(m.classes || {}).slice(0, 12).map(([id, name]) => (
+                        <Chip key={id} text={`${id}:${name}`} />
+                      ))}
+                      {Object.keys(m.classes || {}).length > 12 ? (
+                        <Chip
+                          text={`还有 ${Object.keys(m.classes || {}).length - 12} 类`}
+                          color="yellow"
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="model-classes-empty">暂无可用类别</span>
+                  )}
                 </div>
                 <div className="ops">
                   <label style={{ color: "var(--muted)" }}>conf</label>

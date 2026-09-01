@@ -75,6 +75,7 @@ class MachineDatabase:
         return (
             (1, "unified_machine_schema", MachineDatabase._migration_v1),
             (2, "rule_category", MachineDatabase._migration_v2),
+            (3, "graph_template", MachineDatabase._migration_v3),
         )
 
     @staticmethod
@@ -144,6 +145,28 @@ class MachineDatabase:
             conn.execute(
                 "ALTER TABLE rules ADD COLUMN category TEXT NOT NULL DEFAULT 'ppe'"
             )
+
+    @staticmethod
+    def _migration_v3(conn: sqlite3.Connection) -> None:
+        """Register the built-in graph rule template without seeding rules."""
+        now = int(time.time())
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO rule_templates(
+                code, name, description, executor_type, params_schema_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "graph",
+                "画布自定义组合",
+                "由可视化画布的节点图组合判定",
+                "graph",
+                "[]",
+                now,
+                now,
+            ),
+        )
 
     @staticmethod
     def _migration_v1(conn: sqlite3.Connection) -> None:
