@@ -129,6 +129,20 @@ export default function SettingsPage() {
     }
   });
 
+  const restartService = wrap("restart", async () => {
+    if (!window.confirm("确定要重启服务吗？当前正在进行的任务和连接会短暂中断。")) return;
+    try {
+      await api<{ ok: boolean; message?: string }>("/api/system/restart", {
+        method: "POST",
+        body: {},
+      });
+      toast("服务即将重启，页面会短暂断开");
+      window.setTimeout(() => window.location.reload(), 1800);
+    } catch (e) {
+      toast((e as Error).message, false);
+    }
+  });
+
   if (!data) {
     return (
       <Page title="系统设置" subtitle="配置统一保存到 machine.db 并尽可能热生效；改动前请先完成数据库备份">
@@ -149,6 +163,17 @@ export default function SettingsPage() {
     <Page
       title="系统设置"
       subtitle="所有配置保存到 machine.db 并尽可能热生效"
+      actions={
+        <button
+          className="danger"
+          disabled={busy.restart}
+          onClick={restartService}
+          title="重启检测服务，配置中标记为需重启的项目将在重启后生效"
+        >
+          <Icon name="refresh" size={14} />
+          {busy.restart ? "重启中…" : "重启服务"}
+        </button>
+      }
     >
       {pend.length ? (
         <div className="banner">
@@ -192,33 +217,36 @@ export default function SettingsPage() {
                 <Chip text="即时生效" color="green" />
               )}
             </div>
-            {s.keys.map((k) => (
-              <div key={k.key}>
-                <label>
-                  {k.desc}{" "}
-                  <span className="mono muted" style={{ fontSize: 10.5 }}>
-                    {section}.{k.key}
-                  </span>
-                </label>
-                {k.type === "bool" ? (
-                  <input
-                    type="checkbox"
-                    checked={!!values[section]?.[k.key]}
-                    onChange={(e) => setVal(section, k.key, e.target.checked)}
-                  />
-                ) : (
-                  <input
-                    type={(section === "llm" && k.key === "api_key") ||
-                          (section === "panel" && k.key === "password")
-                          ? "password"
-                          : "text"}
-                    style={{ width: "100%" }}
-                    value={String(values[section]?.[k.key] ?? "")}
-                    onChange={(e) => setVal(section, k.key, e.target.value)}
-                  />
-                )}
-              </div>
-            ))}
+            {s.keys.map((k) => {
+              if (section === "llm" && k.key === "model") return null;
+              return (
+                <div key={k.key}>
+                  <label>
+                    {k.desc}{" "}
+                    <span className="mono muted" style={{ fontSize: 10.5 }}>
+                      {section}.{k.key}
+                    </span>
+                  </label>
+                  {k.type === "bool" ? (
+                    <input
+                      type="checkbox"
+                      checked={!!values[section]?.[k.key]}
+                      onChange={(e) => setVal(section, k.key, e.target.checked)}
+                    />
+                  ) : (
+                    <input
+                      type={(section === "llm" && k.key === "api_key") ||
+                            (section === "panel" && k.key === "password")
+                            ? "password"
+                            : "text"}
+                      style={{ width: "100%" }}
+                      value={String(values[section]?.[k.key] ?? "")}
+                      onChange={(e) => setVal(section, k.key, e.target.value)}
+                    />
+                  )}
+                </div>
+              );
+            })}
             {section === "llm" ? (
               <div
                 style={{
@@ -227,26 +255,20 @@ export default function SettingsPage() {
                   paddingTop: 12,
                 }}
               >
-                <label>模型列表</label>
+                <label>模型名（需支持图片输入）</label>
                 <div className="toolbar">
-                  <select
+                  <input
+                    list="llm-model-options"
                     style={{ flex: 1, minWidth: 160 }}
-                    value={llmModels.includes(String(values.llm?.model ?? ""))
-                      ? String(values.llm?.model ?? "")
-                      : ""}
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      setVal("llm", "model", e.target.value);
-                      toast(`已选择模型：${e.target.value}，请点击“保存”使配置生效`);
-                    }}
-                  >
-                    <option value="">— {llmModels.length ? "选择模型" : "点击“获取模型”拉取"} —</option>
+                    value={String(values.llm?.model ?? "")}
+                    placeholder="输入模型名或点击“获取模型”"
+                    onChange={(e) => setVal("llm", "model", e.target.value)}
+                  />
+                  <datalist id="llm-model-options">
                     {llmModels.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
+                      <option key={m} value={m} />
                     ))}
-                  </select>
+                  </datalist>
                   <button
                     className="mini ghost"
                     disabled={busy.llmmodels}
@@ -256,7 +278,7 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 <p className="muted" style={{ marginTop: 6 }}>
-                  获取模型和测试连接均使用已保存的服务地址与 API Key，不会自动保存；修改配置后请先点击“保存”。
+                  可直接输入模型名，或点击“获取模型”后从候选列表选择；获取模型和测试连接均使用已保存的服务地址与 API Key，不会自动保存。
                 </p>
               </div>
             ) : null}
