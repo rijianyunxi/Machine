@@ -29,6 +29,17 @@ interface ImageItem {
   labeled: boolean;
 }
 
+type SplitFilter = "all" | DatasetSplit;
+
+const SPLIT_LABELS: Record<DatasetSplit, string> = {
+  train: "训练集",
+  val: "验证集",
+  test: "测试集",
+};
+
+const imageKey = (im: Pick<ImageItem, "file" | "split">) =>
+  im.split + ":" + im.file;
+
 const clsColor = (i: number) => `hsl(${Math.round((i * 137.508) % 360)}, 68%, 58%)`;
 
 export default function AnnotatePage() {
@@ -38,6 +49,7 @@ export default function AnnotatePage() {
   const [classes, setClasses] = useState<string[]>([]);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [idx, setIdx] = useState(-1);
+  const [splitFilter, setSplitFilter] = useState<SplitFilter>("all");
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [curCls, setCurCls] = useState(0);
   const [sel, setSel] = useState(-1);
@@ -56,6 +68,13 @@ export default function AnnotatePage() {
   const { busy, wrap } = useBusy();
 
   const img = idx >= 0 && idx < images.length ? images[idx] : null;
+  const visibleImages =
+    splitFilter === "all"
+      ? images
+      : images.filter((im) => im.split === splitFilter);
+  const visibleIdx = img
+    ? visibleImages.findIndex((im) => imageKey(im) === imageKey(img))
+    : -1;
   const imgUrl = (im: Pick<ImageItem, "file" | "split">) =>
     `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(im.file)}?split=${encodeURIComponent(im.split)}`;
   const labelsUrl = (im: Pick<ImageItem, "stem" | "split">) =>
@@ -116,16 +135,22 @@ export default function AnnotatePage() {
 
   const nav = useCallback(
     (d: number) => {
-      if (!images.length) return;
-      const next = Math.min(Math.max(idx + d, 0), images.length - 1);
-      if (next !== idx) void jump(next);
+      if (!visibleImages.length) return;
+      const nextVisibleIdx =
+        visibleIdx < 0
+          ? 0
+          : Math.min(Math.max(visibleIdx + d, 0), visibleImages.length - 1);
+      const nextImage = visibleImages[nextVisibleIdx];
+      const next = images.findIndex((im) => imageKey(im) === imageKey(nextImage));
+      if (next >= 0 && next !== idx) void jump(next);
     },
-    [idx, images.length, jump],
+    [idx, images, jump, visibleImages, visibleIdx],
   );
 
   const switchDs = useCallback(
     async (name: string) => {
       setDs(name);
+      setSplitFilter("all");
       setIdx(-1);
       await loadInfo(name);
       const r = await api<{ images: ImageItem[] }>(
@@ -144,6 +169,38 @@ export default function AnnotatePage() {
       }
     },
     [loadInfo],
+  );
+
+  const changeSplitFilter = useCallback(
+    async (nextFilter: SplitFilter) => {
+      if (nextFilter === splitFilter) return;
+      try {
+        if (dirtyRef.current) await saveLabels(true);
+        const nextImages =
+          nextFilter === "all"
+            ? images
+            : images.filter((im) => im.split === nextFilter);
+        setSplitFilter(nextFilter);
+        if (!nextImages.length) {
+          setIdx(-1);
+          setSel(-1);
+          setBoxes([]);
+          dirtyRef.current = false;
+          return;
+        }
+        const nextImage =
+          img && nextImages.some((im) => imageKey(im) === imageKey(img))
+            ? img
+            : nextImages[0];
+        const nextIndex = images.findIndex(
+          (im) => imageKey(im) === imageKey(nextImage),
+        );
+        if (nextIndex >= 0) await jump(nextIndex, true);
+      } catch (e) {
+        toast((e as Error).message || "切换分区失败", false);
+      }
+    },
+    [images, img, jump, saveLabels, splitFilter, toast],
   );
 
   useEffect(() => {
@@ -526,13 +583,27 @@ export default function AnnotatePage() {
       <div className="anno-layout" style={{ display: "grid", gridTemplateColumns: "250px 1fr 270px", gap: 14 }}>
         {/* 图片列表 */}
         <div className="card anno-list-card" style={{ padding: 12 }}>
-          <div className="card-title" style={{ marginBottom: 8 }}>
-            图片 <span className="muted">{images.length}</span>
+          <div className="anno-list-head">
+            <div className="card-title">
+              图片 <span className="muted">{visibleImages.length}</span>
+            </div>
+            <select
+              aria-label="图片分区筛选"
+              value={splitFilter}
+              onChange={(e) => void changeSplitFilter(e.target.value as SplitFilter)}
+            >
+              <option value="all">全部分区</option>
+              <option value="train">{SPLIT_LABELS.train}</option>
+              <option value="val">{SPLIT_LABELS.val}</option>
+              <option value="test">{SPLIT_LABELS.test}</option>
+            </select>
           </div>
           <div className="snap-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {images.length ? (
-              images.map((im, i) => (
-                <figure key={`${im.split}:${im.file}`} style={{ margin: 0, cursor: "pointer" }} onClick={() => jump(i)}>
+            {visibleImages.length ? (
+              visibleImages.map((im) => {
+                const actualIndex = images.findIndex((item) => imageKey(item) === imageKey(im));
+                return (
+                <figure key={`${im.split}:${im.file}`} style={{ margin: 0, cursor: "pointer" }} onClick={() => jump(actualIndex)}>
                   <img
                     src={imgUrl(im)}
                     loading="lazy"
@@ -542,7 +613,7 @@ export default function AnnotatePage() {
                       aspectRatio: "4/3",
                       objectFit: "cover",
                       borderRadius: 6,
-                      border: `2px solid ${i === idx ? "var(--yellow)" : "var(--border)"}`,
+                      border: `2px solid ${actualIndex === idx ? "var(--yellow)" : "var(--border)"}`,
                     }}
                   />
                   <figcaption
@@ -569,9 +640,12 @@ export default function AnnotatePage() {
                     />
                   </figcaption>
                 </figure>
-              ))
+                );
+              })
             ) : (
-              <Empty>数据集为空，回数据集页导入图片</Empty>
+              <Empty>
+                {images.length ? "当前分区暂无图片" : "数据集为空，回数据集页导入图片"}
+              </Empty>
             )}
           </div>
         </div>
@@ -669,13 +743,13 @@ export default function AnnotatePage() {
           <div className="toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>
             <span className="muted">{img ? img.file : "未选择图片"}</span>
             <span className="toolbar">
-              <button className="mini ghost" disabled={idx <= 0} onClick={() => nav(-1)}>
+              <button className="mini ghost" disabled={visibleIdx <= 0} onClick={() => nav(-1)}>
                 <Icon name="chevron-left" size={13} /> 上一张
               </button>
               <span className="muted">
-                {images.length ? `${idx + 1}/${images.length}` : "0/0"}
+                {visibleImages.length ? `${visibleIdx + 1}/${visibleImages.length}` : "0/0"}
               </span>
-              <button className="mini ghost" disabled={idx >= images.length - 1} onClick={() => nav(1)}>
+              <button className="mini ghost" disabled={visibleIdx < 0 || visibleIdx >= visibleImages.length - 1} onClick={() => nav(1)}>
                 下一张 <Icon name="chevron-right" size={13} />
               </button>
             </span>

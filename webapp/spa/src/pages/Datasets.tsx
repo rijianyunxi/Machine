@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { DatasetInfo, ModelsResponse, PrelabelStatus } from "../api/types";
+import type { DatasetInfo, PrelabelStatus } from "../api/types";
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
@@ -31,18 +31,43 @@ const imageKey = (im: Pick<ImgInfo, "file" | "split">) =>
 const imgUrl = (ds: string, file: string, split: DatasetSplit) =>
   `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(file)}?split=${encodeURIComponent(split)}`;
 
+function SplitPicker({
+  value,
+  onChange,
+}: {
+  value: DatasetSplit;
+  onChange: (value: DatasetSplit) => void;
+}) {
+  return (
+    <div className="dataset-split-picker" role="group" aria-label="数据集分区">
+      {(Object.keys(SPLIT_LABELS) as DatasetSplit[]).map((split) => (
+        <button
+          key={split}
+          type="button"
+          className={value === split ? "on" : ""}
+          aria-pressed={value === split}
+          onClick={() => onChange(split)}
+        >
+          {SPLIT_LABELS[split]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [cName, setCName] = useState("");
   const [cClasses, setCClasses] = useState("");
-  const [uploadSplits, setUploadSplits] = useState<Record<string, DatasetSplit>>({});
   const [snapTarget, setSnapTarget] = useState<string | null>(null);
   const [snapSplit, setSnapSplit] = useState<DatasetSplit>("train");
   const [snapDate, setSnapDate] = useState("");
   const [snapLimit, setSnapLimit] = useState("200");
+  const [uploadTarget, setUploadTarget] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadSplit, setUploadSplit] = useState<DatasetSplit>("train");
   const [pre, setPre] = useState<Record<string, PrelabelStatus>>({});
-  const [loadedModels, setLoadedModels] = useState<string[] | null>(null);
   const [mgr, setMgr] = useState<{ name: string; images: ImgInfo[] } | null>(
     null,
   );
@@ -59,19 +84,9 @@ export default function DatasetsPage() {
     setDatasets(r.datasets);
   }, []);
 
-  const refreshModelStatus = useCallback(async () => {
-    try {
-      const r = await api<ModelsResponse>("/api/models");
-      setLoadedModels((r.models || []).filter((m) => m.loaded).map((m) => m.name));
-    } catch {
-      setLoadedModels(null);
-    }
-  }, []);
-
   useEffect(() => {
     void refresh();
-    void refreshModelStatus();
-  }, [refresh, refreshModelStatus]);
+  }, [refresh]);
 
   // YOLO 批量预标注进度轮询：有运行中的任务时 1.5s 一次
   useEffect(() => {
@@ -115,24 +130,31 @@ export default function DatasetsPage() {
 
   const uploadImages = async (
     name: string,
-    files: FileList | null,
+    files: File[],
     split: DatasetSplit,
   ) => {
-    if (!files?.length) return;
+    if (!files.length) return;
     const fd = new FormData();
     for (const f of files) fd.append("images", f);
     fd.append("split", split);
+    const d = await api<{ added: number }>(
+      `/api/datasets/${encodeURIComponent(name)}/images`,
+      { method: "POST", body: fd },
+    );
+    toast(`已导入 ${d.added} 张到${SPLIT_LABELS[split]}`);
+    await refresh();
+  };
+
+  const doUpload = wrap("upload", async () => {
+    if (!uploadTarget || !uploadFiles.length) return;
     try {
-      const d = await api<{ added: number }>(
-        `/api/datasets/${encodeURIComponent(name)}/images`,
-        { method: "POST", body: fd },
-      );
-      toast(`已导入 ${d.added} 张到${SPLIT_LABELS[split]}`);
-      refresh();
+      await uploadImages(uploadTarget, uploadFiles, uploadSplit);
+      setUploadTarget(null);
+      setUploadFiles([]);
     } catch (e) {
       toast((e as Error).message || "导入失败", false);
     }
-  };
+  });
 
   const doImportSnap = wrap("snap", async () => {
     if (!snapTarget) return;
@@ -162,7 +184,6 @@ export default function DatasetsPage() {
     try {
       await api(`/api/datasets/${encodeURIComponent(name)}/prelabel`, {
         method: "POST",
-        // Empty model means all currently loaded local YOLO detectors.
         body: { model: "", conf: 0.4, only_unlabeled: true, limit: 200 },
       });
       toast("YOLO 批量预标注已启动，可离开本页（后台执行）");
@@ -172,7 +193,6 @@ export default function DatasetsPage() {
           running: true,
           done: 0,
           total: 0,
-          models: loadedModels || [],
         },
       }));
     } catch (e) {
@@ -396,29 +416,12 @@ export default function DatasetsPage() {
                     >
                       <Icon name="edit" size={14} /> 打开标注
                     </a>
-                    <div className="dataset-upload-action">
-                      <select
-                        className="dataset-split-select"
-                        aria-label={`${d.name} 图片导入目标`}
-                        value={uploadSplits[d.name] ?? "train"}
-                        onChange={(e) =>
-                          setUploadSplits((m) => ({
-                            ...m,
-                            [d.name]: e.target.value as DatasetSplit,
-                          }))
-                        }
-                      >
-                        <option value="train">训练集</option>
-                        <option value="val">验证集</option>
-                        <option value="test">测试集</option>
-                      </select>
-                      <button
-                        className="ghost dataset-action dataset-action--secondary"
-                        onClick={() => fileRefs.current[d.name]?.click()}
-                      >
-                        <Icon name="upload" size={14} /> 导入图片
-                      </button>
-                    </div>
+                    <button
+                      className="ghost dataset-action dataset-action--secondary"
+                      onClick={() => fileRefs.current[d.name]?.click()}
+                    >
+                      <Icon name="upload" size={14} /> 导入图片
+                    </button>
                     <input
                       ref={(el) => {
                         fileRefs.current[d.name] = el;
@@ -429,43 +432,15 @@ export default function DatasetsPage() {
                       accept=".jpg,.jpeg,.png,.webp"
                       aria-label={`向 ${d.name} 导入图片`}
                       onChange={(e) => {
-                        uploadImages(
-                          d.name,
-                          e.target.files,
-                          uploadSplits[d.name] ?? "train",
-                        );
+                        const files = Array.from(e.target.files ?? []);
+                        if (files.length) {
+                          setUploadTarget(d.name);
+                          setUploadFiles(files);
+                          setUploadSplit("train");
+                        }
                         e.target.value = "";
                       }}
                     />
-                  </div>
-                  <div className="dataset-card__prelabel-info">
-                    <div className="dataset-card__prelabel-title">
-                      <Chip text="YOLO 检测模型" color="blue" />
-                      <span>本地模型标注，不是 AI 大模型</span>
-                    </div>
-                    <div className="dataset-card__prelabel-detail">
-                      {prelabelStatus?.running
-                        ? prelabelStatus.total
-                          ? `正在处理未标注图片：${prelabelStatus.done}/${prelabelStatus.total} 张`
-                          : "正在扫描未标注图片…"
-                        : prelabelStatus?.error
-                          ? `上次失败：${prelabelStatus.error}`
-                          : prelabelStatus && prelabelStatus.total
-                            ? `上次完成：${prelabelStatus.done}/${prelabelStatus.total} 张`
-                            : "仅处理未标注图片，最多 200 张；标签按原 train/val/test 保存"}
-                    </div>
-                    <div className="dataset-card__prelabel-models">
-                      使用模型：{(prelabelStatus?.models?.length
-                        ? prelabelStatus.models
-                        : loadedModels)?.length
-                        ? (prelabelStatus?.models?.length
-                            ? prelabelStatus.models
-                            : loadedModels
-                          )!.join("、")
-                        : loadedModels === null
-                          ? "模型状态读取失败"
-                          : "暂无已加载模型"}
-                    </div>
                   </div>
                   <div className="dataset-card__secondary-actions">
                     <button
@@ -482,7 +457,6 @@ export default function DatasetsPage() {
                         prelabelStatus?.running ? " is-running" : ""
                       }`}
                       disabled={busyPl || !!prelabelStatus?.running}
-                      title="使用当前已加载的本地 YOLO 检测模型，不调用大模型；仅处理未标注图片，最多 200 张"
                       onClick={() => prelabel(d.name)}
                     >
                       <Icon name="sparkles" size={13} />
@@ -553,6 +527,51 @@ export default function DatasetsPage() {
         </Modal>
       )}
 
+      {uploadTarget && uploadFiles.length > 0 && (
+        <Modal
+          title="导入图片"
+          width={520}
+          onClose={() => {
+            if (busy.upload) return;
+            setUploadTarget(null);
+            setUploadFiles([]);
+          }}
+          footer={
+            <>
+              <button
+                className="ghost"
+                disabled={busy.upload}
+                onClick={() => {
+                  setUploadTarget(null);
+                  setUploadFiles([]);
+                }}
+              >
+                取消
+              </button>
+              <button disabled={busy.upload} onClick={doUpload}>
+                {busy.upload ? "导入中…" : "确认导入"}
+              </button>
+            </>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 10 }}>
+            导入到数据集：<strong style={{ color: "var(--text)" }}>{uploadTarget}</strong>
+          </p>
+          <div className="dataset-upload-summary">
+            <strong>已选择 {uploadFiles.length} 张图片</strong>
+            <div className="dataset-upload-files">
+              {uploadFiles.slice(0, 8).map((file) => (
+                <span key={file.name + "-" + file.size + "-" + file.lastModified} title={file.name}>
+                  {file.name}
+                </span>
+              ))}
+              {uploadFiles.length > 8 ? <span className="muted">还有 {uploadFiles.length - 8} 张…</span> : null}
+            </div>
+          </div>
+          <label>选择数据集分区</label>
+          <SplitPicker value={uploadSplit} onChange={setUploadSplit} />
+        </Modal>
+      )}
       {snapTarget && (
         <Modal
           title="从快照导入"
@@ -572,16 +591,8 @@ export default function DatasetsPage() {
           <p className="muted" style={{ marginBottom: 6 }}>
             导入到数据集：{snapTarget}
           </p>
-          <label>导入到</label>
-          <select
-            className="w240"
-            value={snapSplit}
-            onChange={(e) => setSnapSplit(e.target.value as DatasetSplit)}
-          >
-            <option value="train">训练集</option>
-            <option value="val">验证集</option>
-            <option value="test">测试集</option>
-          </select>
+          <label>选择数据集分区</label>
+          <SplitPicker value={snapSplit} onChange={setSnapSplit} />
           <label>日期（留空 = 最近日期优先）</label>
           <input
             className="w240"
