@@ -256,7 +256,7 @@ export const Select = forwardRef<SelectHandle, SelectProps>(function Select(
               role="option"
               aria-selected={index === selectedIndex}
               disabled={option.disabled}
-              onMouseEnter={() => setHighlightedIndex(index)}
+              onMouseEnter={() => { if (!option.disabled) setHighlightedIndex(index); }}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => selectValue(option.value)}
             >
