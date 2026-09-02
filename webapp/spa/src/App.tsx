@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { probe, setLoginPrompt } from "./api/client";
 import { AppLayout } from "./layout/AppLayout";
 import { ConfirmProvider } from "./ui/Confirm";
@@ -21,6 +21,8 @@ import LogsPage from "./pages/Logs";
 import TrainPage from "./pages/Train";
 
 function InnerApp() {
+  const location = useLocation();
+  const onLoginPage = location.pathname === "/login";
   // null = 会话检查中；false = 未登录；true = 已登录
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -28,13 +30,17 @@ function InnerApp() {
 
   useEffect(() => {
     probe("/api/system/info").then(setAuthed);
-    // API 客户端遇到 401 时弹登录框，成功后重试原请求
+    // API 客户端遇到 401 时弹登录框，成功后重试原请求。
+    // 登录页本身已经展示登录表单，不再叠加一次登录弹窗。
     setLoginPrompt(
-      () =>
-        new Promise<boolean>((resolve) => {
+      () => {
+        if (window.location.pathname.endsWith("/login"))
+          return Promise.resolve(false);
+        return new Promise<boolean>((resolve) => {
           resolver.current = resolve;
           setLoginOpen(true);
-        }),
+        });
+      },
     );
   }, []);
 
@@ -44,6 +50,11 @@ function InnerApp() {
     setLoginOpen(false);
     if (ok) setAuthed(true);
   };
+
+  // 从登录弹窗切换到独立登录页时，结束原请求，避免弹窗残留并遮住登录表单。
+  useEffect(() => {
+    if (onLoginPage && loginOpen) finish(false);
+  }, [onLoginPage, loginOpen]);
 
   return (
     <>
@@ -77,7 +88,7 @@ function InnerApp() {
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-      {loginOpen && (
+      {loginOpen && !onLoginPage && (
         <Modal title="登录面板" width={380} onClose={() => finish(false)}>
           <LoginForm
             compact
