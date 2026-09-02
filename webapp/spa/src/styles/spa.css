@@ -855,56 +855,124 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .rules-pane { min-width: 0; }
 /* 系统设置分类 tab：只展示当前分类，避免配置卡片堆成一面墙 */
 .settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
   margin-bottom: 14px;
-  padding: 6px;
+  padding: 4px;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(2, 6, 16, 0.12);
 }
 .settings-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  flex: 1 1 180px;
-  min-height: 40px;
+  min-width: 0;
+  min-height: 42px;
   padding: 7px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text-2);
   font-size: 12.5px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(2, 6, 16, 0.16);
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .settings-tab:hover {
   background: var(--surface-3);
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   color: var(--text);
   filter: none;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(2, 6, 16, 0.18);
+  box-shadow: none;
 }
 .settings-tab.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+  color: var(--text);
   font-weight: 700;
-  box-shadow: 0 4px 14px rgba(77, 159, 255, 0.28);
+  box-shadow: 0 2px 8px rgba(2, 6, 16, 0.14);
+}
+.settings-tab.on::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  bottom: 3px;
+  left: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.9;
 }
 .settings-tab.on:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-strong));
+  color: var(--text);
 }
 .settings-tab .chip { flex-shrink: 0; }
+
+/* 模型输入、按钮和候选列表保持在同一个卡片内，避免原生 datalist
+ * 在宽屏下把候选项弹到页面左侧。 */
+.llm-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  flex-wrap: nowrap;
+}
+.llm-model-picker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.llm-model-options {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+}
+.llm-model-option {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.llm-model-option:hover, .llm-model-option.selected {
+  background: var(--surface-2);
+  color: var(--text);
+  filter: none;
+}
+@media (max-width: 680px) {
+  .settings-tabs { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .llm-model-row { grid-template-columns: 1fr; }
+  .llm-model-row > button { justify-self: start; }
+}
+
 .settings-grid { align-items: start; }
 /* 类别 tag 输入 */
 .tag-input {

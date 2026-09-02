@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [values, setValues] = useState<Values>({});
   const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [llmModelsOpen, setLlmModelsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("runtime");
   const toast = useToast();
   const { busy, wrap } = useBusy();
@@ -123,6 +124,7 @@ export default function SettingsPage() {
     try {
       const r = await api<{ models: string[] }>("/api/llm/models", { method: "POST", body: {} });
       setLlmModels(r.models);
+      setLlmModelsOpen(r.models.length > 0);
       toast(`获取到 ${r.models.length} 个模型`);
     } catch (e) {
       toast((e as Error).message, false);
@@ -256,19 +258,45 @@ export default function SettingsPage() {
                 }}
               >
                 <label>模型名（需支持图片输入）</label>
-                <div className="toolbar">
-                  <input
-                    list="llm-model-options"
-                    style={{ flex: 1, minWidth: 160 }}
-                    value={String(values.llm?.model ?? "")}
-                    placeholder="输入模型名或点击“获取模型”"
-                    onChange={(e) => setVal("llm", "model", e.target.value)}
-                  />
-                  <datalist id="llm-model-options">
-                    {llmModels.map((m) => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
+                <div className="toolbar llm-model-row">
+                  <div className="llm-model-picker">
+                    <input
+                      style={{ width: "100%" }}
+                      value={String(values.llm?.model ?? "")}
+                      placeholder="输入模型名或点击“获取模型”"
+                      aria-haspopup="listbox"
+                      aria-expanded={llmModelsOpen}
+                      onFocus={() => setLlmModelsOpen(llmModels.length > 0)}
+                      onBlur={() => window.setTimeout(() => setLlmModelsOpen(false), 120)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setLlmModelsOpen(false);
+                      }}
+                      onChange={(e) => {
+                        setVal("llm", "model", e.target.value);
+                        if (llmModels.length > 0) setLlmModelsOpen(true);
+                      }}
+                    />
+                    {llmModelsOpen && llmModels.length ? (
+                      <div className="llm-model-options" role="listbox">
+                        {llmModels.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            className={`llm-model-option ${String(values.llm?.model ?? "") === m ? "selected" : ""}`}
+                            role="option"
+                            aria-selected={String(values.llm?.model ?? "") === m}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setVal("llm", "model", m);
+                              setLlmModelsOpen(false);
+                            }}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     className="mini ghost"
                     disabled={busy.llmmodels}
