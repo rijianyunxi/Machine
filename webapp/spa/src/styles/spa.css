@@ -1351,6 +1351,50 @@ a.dataset-action:hover { text-decoration: none; }
 }
 .dataset-action--danger:hover { background: var(--red-soft); filter: none; }
 .dataset-action.is-running { color: var(--accent); }
+.dataset-prelabel-actions {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(42px, .55fr);
+  gap: 8px;
+}
+.dataset-prelabel-actions > button { min-width: 0; }
+.dataset-action__spinner {
+  display: inline-flex;
+  animation: spin 0.85s linear infinite;
+}
+.dataset-action.is-running,
+.dataset-action.is-running:disabled {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+  background: var(--accent-soft);
+  opacity: 1;
+}
+.prelabel-log-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.prelabel-log-summary > span:first-child {
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-weight: 600;
+}
+.prelabel-log-summary > span:first-child.is-running {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.prelabel-log {
+  min-height: 300px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 :root[data-theme="light"] .dataset-card__classes {
   background: rgba(35, 36, 37, 0.018);

@@ -47,6 +47,8 @@ export const UI_ICONS: Record<string, string> = {
   zap: "<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>",
   sparkles:
     "<path d='M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z'/><path d='M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z'/>",
+  logs:
+    "<polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/>",
   "check-square":
     "<polyline points='9 11 12 14 22 4'/><path d='M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'/>",
   square: "<rect x='3' y='3' width='18' height='18' rx='2'/>",

@@ -180,10 +180,15 @@ export interface DatasetInfo {
 
 export interface PrelabelStatus {
   running: boolean;
+  dataset?: string | null;
   done: number;
   total: number;
+  failed?: number;
   models?: string[];
   error?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  logs?: string[];
 }
 
 export interface SnapshotDate {

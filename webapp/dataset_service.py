@@ -15,6 +15,7 @@ Standard YOLO layout:
 import re
 import shutil
 import threading
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -43,8 +44,18 @@ class DatasetService:
         self._lock = threading.Lock()
         migrate_legacy_runtime_dirs()
         ensure_storage_dirs()
-        self._prelabel_job = {"running": False, "done": 0, "total": 0,
-                              "models": [], "error": None}
+        self._prelabel_job = {
+            "running": False,
+            "dataset": None,
+            "done": 0,
+            "total": 0,
+            "failed": 0,
+            "models": [],
+            "error": None,
+            "started_at": None,
+            "finished_at": None,
+            "logs": [],
+        }
 
     # ---------- paths ----------
 
@@ -351,8 +362,8 @@ class DatasetService:
 
     def delete_images(self, name: str, images: list) -> int:
         """Delete images and labels, accepting split-aware refs and old filenames."""
-        if self._prelabel_job["running"]:
-            raise DatasetError("AI 预标注进行中，请稍后再管理图片")
+        if self.prelabel_status().get("running"):
+            raise DatasetError("YOLO 预标注进行中，请稍后再管理图片")
         n = 0
         for item in images or []:
             if isinstance(item, dict):
@@ -415,48 +426,154 @@ class DatasetService:
         return len(lines)
     # ---------- bulk AI pre-labeling ----------
 
-    def prelabel_status(self) -> dict:
-        return dict(self._prelabel_job)
+    def _prelabel_log(self, message: str):
+        """Append a bounded, timestamped message to the current job log."""
+        line = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            logs = self._prelabel_job.setdefault("logs", [])
+            logs.append(line)
+            del logs[:-300]
+            return
+        with lock:
+            logs = self._prelabel_job.setdefault("logs", [])
+            logs.append(line)
+            del logs[:-300]
+
+    def _prelabel_update(self, **updates):
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            self._prelabel_job.update(updates)
+            return
+        with lock:
+            self._prelabel_job.update(updates)
+
+    def _prelabel_increment(self, key: str):
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + 1
+            return
+        with lock:
+            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + 1
+
+    def prelabel_status(self, name: str | None = None) -> dict:
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            status = dict(self._prelabel_job)
+            status["logs"] = list(self._prelabel_job.get("logs", []))
+        else:
+            with lock:
+                status = dict(self._prelabel_job)
+                status["logs"] = list(self._prelabel_job.get("logs", []))
+        # A single worker is shared by all datasets. Do not expose another
+        # dataset's previous job when the page asks for this dataset.
+        if name and status.get("dataset") not in (None, name):
+            return {
+                "running": False,
+                "dataset": name,
+                "done": 0,
+                "total": 0,
+                "failed": 0,
+                "models": [],
+                "error": None,
+                "started_at": None,
+                "finished_at": None,
+                "logs": [],
+            }
+        return status
 
     def prelabel(self, name: str, model: str, conf: float = 0.4,
                  only_unlabeled: bool = True, limit: int = 200):
-        if self._prelabel_job["running"]:
-            raise DatasetError("已有预标注任务在运行")
         detector = self.state._get_standalone_detector()
         if detector is None or not detector.loaded_models:
             raise DatasetError("没有可用的检测模型")
         selected_models = [model] if model else list(detector.loaded_models)
-        self._prelabel_job = {"running": True, "done": 0, "total": 0,
-                              "models": selected_models, "error": None}
+        started_at = datetime.now().isoformat(timespec="seconds")
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            if self._prelabel_job.get("running"):
+                raise DatasetError("已有预标注任务在运行")
+            self._prelabel_job = {
+                "running": True,
+                "dataset": name,
+                "done": 0,
+                "total": 0,
+                "failed": 0,
+                "models": selected_models,
+                "error": None,
+                "started_at": started_at,
+                "finished_at": None,
+                "logs": [],
+            }
+        else:
+            with lock:
+                if self._prelabel_job.get("running"):
+                    raise DatasetError("已有预标注任务在运行")
+                self._prelabel_job = {
+                    "running": True,
+                    "dataset": name,
+                    "done": 0,
+                    "total": 0,
+                    "failed": 0,
+                    "models": selected_models,
+                    "error": None,
+                    "started_at": started_at,
+                    "finished_at": None,
+                    "logs": [],
+                }
+        self._prelabel_log(
+            f"任务启动 · 数据集 {name} · 模型 {', '.join(selected_models)} · 最多 {max(0, int(limit))} 张"
+        )
 
         def job():
+            overrides = []
             try:
+                self._prelabel_log("正在扫描未标注图片…")
                 targets = []
                 for info in self.list_images(name, limit=100000):
                     if only_unlabeled and info["labeled"]:
                         continue
                     targets.append(info)
                 targets = targets[: max(0, int(limit))]
-                self._prelabel_job["total"] = len(targets)
-                overrides = []
+                self._prelabel_update(total=len(targets))
+                self._prelabel_log(f"找到 {len(targets)} 张待处理图片")
+                if not targets:
+                    self._prelabel_log("没有符合条件的未标注图片")
+
                 try:
                     if model and conf is not None:
                         detector.set_thresholds(model, confidence=conf)
                         overrides.append(model)
-                    for info in targets:
-                        if not self._prelabel_job["running"]:
+                    for index, info in enumerate(targets, 1):
+                        with self._lock:
+                            running = bool(self._prelabel_job.get("running"))
+                        if not running:
+                            self._prelabel_log("任务已停止")
                             break
-                        p = self.image_path(name, info["file"], split=info["split"])
-                        import cv2
+                        location = f"{info['split']}/{info['file']}"
+                        try:
+                            image_path = self.image_path(
+                                name, info["file"], split=info["split"])
+                            import cv2
 
-                        img = cv2.imread(str(p))
-                        if img is None:
-                            continue
-                        dets = detector.detect_all(img, model_names=[model] if model else None)
-                        boxes = self._dets_to_yolo(dets, img.shape)
-                        self.save_labels(name, info["stem"], boxes,
-                                          split=info["split"])
-                        self._prelabel_job["done"] += 1
+                            img = cv2.imread(str(image_path))
+                            if img is None:
+                                raise RuntimeError("图片读取失败")
+                            dets = detector.detect_all(
+                                img, model_names=[model] if model else None)
+                            boxes = self._dets_to_yolo(dets, img.shape)
+                            self.save_labels(
+                                name, info["stem"], boxes, split=info["split"])
+                            self._prelabel_increment("done")
+                            self._prelabel_log(
+                                f"{index}/{len(targets)} · {location} · 检测到 {len(boxes)} 个框"
+                            )
+                        except Exception as image_error:
+                            self._prelabel_increment("done")
+                            self._prelabel_increment("failed")
+                            self._prelabel_log(
+                                f"{index}/{len(targets)} · {location} · 处理失败：{image_error}"
+                            )
                 finally:
                     cfg = {m["name"]: m for m in
                            self.state.settings().get("model", {}).get("models", [])}
@@ -464,9 +581,18 @@ class DatasetService:
                         val = cfg.get(mn, {}).get("confidence_override")
                         detector.set_thresholds(mn, confidence=val)
             except Exception as e:
-                self._prelabel_job["error"] = str(e)
+                self._prelabel_update(error=str(e))
+                self._prelabel_log(f"任务异常：{e}")
             finally:
-                self._prelabel_job["running"] = False
+                finished_at = datetime.now().isoformat(timespec="seconds")
+                self._prelabel_update(running=False, finished_at=finished_at)
+                status = self.prelabel_status()
+                if status.get("error"):
+                    self._prelabel_log("任务结束（失败）")
+                else:
+                    self._prelabel_log(
+                        f"任务完成 · 成功 {status.get('done', 0) - status.get('failed', 0)} 张 · 失败 {status.get('failed', 0)} 张"
+                    )
 
         threading.Thread(target=job, name="prelabel", daemon=True).start()
 

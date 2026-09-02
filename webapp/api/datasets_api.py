@@ -142,5 +142,5 @@ def start_prelabel(request: Request, name: str, data: dict):
 
 @router.get("/api/datasets/{name}/prelabel_status")
 def prelabel_status(request: Request, name: str):
-    return get_state(request).datasets.prelabel_status()
+    return get_state(request).datasets.prelabel_status(name)
 

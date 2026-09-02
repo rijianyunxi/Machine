@@ -79,6 +79,9 @@ export default function DatasetsPage() {
   const lightbox = useLightbox();
   const { busy, wrap } = useBusy();
   const [busyPl, setBusyPl] = useState(false);
+  const [prelabelStarting, setPrelabelStarting] = useState<string | null>(null);
+  const [logTarget, setLogTarget] = useState<string | null>(null);
+  const logRef = useRef<HTMLPreElement | null>(null);
 
   const refresh = useCallback(async () => {
     const r = await api<{ datasets: DatasetInfo[] }>("/api/datasets");
@@ -88,6 +91,35 @@ export default function DatasetsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // 页面重新打开时恢复当前/最近一次预标注状态，避免任务在后台运行但按钮看起来像未启动。
+  useEffect(() => {
+    if (!datasets?.length) return;
+    let cancelled = false;
+    const loadStatuses = async () => {
+      const entries = await Promise.all(
+        datasets.map(async (dataset) => {
+          try {
+            const status = await api<PrelabelStatus>(
+              "/api/datasets/" + encodeURIComponent(dataset.name) + "/prelabel_status",
+            );
+            return [dataset.name, status] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (cancelled) return;
+      setPre((current) => ({
+        ...current,
+        ...Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, PrelabelStatus]>),
+      }));
+    };
+    void loadStatuses();
+    return () => {
+      cancelled = true;
+    };
+  }, [datasets]);
 
   // YOLO 批量预标注进度轮询：有运行中的任务时 1.5s 一次
   useEffect(() => {
@@ -113,6 +145,13 @@ export default function DatasetsPage() {
     }, 1500);
     return () => clearInterval(timer);
   }); // 每次渲染后按最新 pre 状态重挂
+
+  const logStatus = logTarget ? pre[logTarget] : undefined;
+  const logLines = logStatus?.logs ?? [];
+  useEffect(() => {
+    if (!logTarget || !logRef.current) return;
+    logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logTarget, logLines.length]);
 
   const create = wrap("create", async () => {
     const classes = cClasses
@@ -192,26 +231,47 @@ export default function DatasetsPage() {
   });
 
   const prelabel = async (name: string) => {
-    if (busy.pl || pre[name]?.running) return;
+    if (busyPl || pre[name]?.running) return;
+    setPrelabelStarting(name);
     setBusyPl(true);
+    setPre((current) => ({
+      ...current,
+      [name]: {
+        ...current[name],
+        dataset: name,
+        running: true,
+        done: 0,
+        total: 0,
+        failed: 0,
+        error: null,
+        logs: ["正在启动 YOLO 本地模型预标注…"],
+      },
+    }));
     try {
-      await api(`/api/datasets/${encodeURIComponent(name)}/prelabel`, {
+      await api("/api/datasets/" + encodeURIComponent(name) + "/prelabel", {
         method: "POST",
         body: { model: "", conf: 0.4, only_unlabeled: true, limit: 200 },
       });
-      toast("YOLO 批量预标注已启动，可离开本页（后台执行）");
-      setPre((m) => ({
-        ...m,
-        [name]: {
-          running: true,
-          done: 0,
-          total: 0,
-        },
-      }));
+      toast("YOLO 批量预标注已启动，可打开“标注日志”查看进度");
     } catch (e) {
-      toast((e as Error).message, false);
+      const message = (e as Error).message || "启动预标注失败";
+      toast(message, false);
+      setPre((current) => {
+        const previous = current[name];
+        return {
+          ...current,
+          [name]: {
+            ...previous,
+            dataset: name,
+            running: false,
+            error: message,
+            logs: [...(previous?.logs ?? []), "启动失败：" + message],
+          },
+        };
+      });
     } finally {
       setBusyPl(false);
+      setPrelabelStarting(null);
     }
   };
 
@@ -348,6 +408,9 @@ export default function DatasetsPage() {
             const visibleClasses = d.classes.slice(0, 4);
             const hiddenClassCount = d.classes.length - visibleClasses.length;
             const prelabelStatus = pre[d.name];
+            const prelabelWorking = prelabelStarting === d.name || !!prelabelStatus?.running;
+            const prelabelDisabled = busyPl || !!prelabelStatus?.running;
+            const hasPrelabelLog = prelabelWorking || !!prelabelStatus?.logs?.length;
 
             return (
               <article
@@ -446,20 +509,35 @@ export default function DatasetsPage() {
                     >
                       <Icon name="camera" size={13} /> 从快照导入
                     </button>
-                    <button
-                      className={`ghost dataset-action dataset-action--quiet${
-                        prelabelStatus?.running ? " is-running" : ""
-                      }`}
-                      disabled={busyPl || !!prelabelStatus?.running}
-                      onClick={() => prelabel(d.name)}
-                    >
-                      <Icon name="sparkles" size={13} />
-                      {prelabelStatus?.running
-                        ? prelabelStatus.total
-                          ? `YOLO 标注 ${prelabelStatus.done}/${prelabelStatus.total}`
-                          : "YOLO 正在扫描…"
-                        : "YOLO 批量预标注"}
-                    </button>
+                    <div className="dataset-prelabel-actions">
+                      <button
+                        className={"ghost dataset-action dataset-action--quiet" +
+                          (prelabelWorking ? " is-running" : "")}
+                        disabled={prelabelDisabled}
+                        aria-busy={prelabelWorking}
+                        title={prelabelWorking ? "YOLO 本地模型正在批量标注" : "使用已加载的 YOLO 检测模型进行预标注"}
+                        onClick={() => prelabel(d.name)}
+                      >
+                        <span className={prelabelWorking ? "dataset-action__spinner" : ""}>
+                          <Icon name={prelabelWorking ? "refresh" : "sparkles"} size={13} />
+                        </span>
+                        {prelabelWorking
+                          ? prelabelStatus?.total
+                            ? "YOLO 标注 " + prelabelStatus.done + "/" + prelabelStatus.total
+                            : prelabelStarting === d.name
+                              ? "YOLO 启动中…"
+                              : "YOLO 正在扫描…"
+                          : "YOLO 批量预标注"}
+                      </button>
+                      <button
+                        className="ghost dataset-action dataset-action--quiet"
+                        disabled={!hasPrelabelLog}
+                        onClick={() => setLogTarget(d.name)}
+                        title={hasPrelabelLog ? "查看 YOLO 预标注过程日志" : "暂无预标注日志"}
+                      >
+                        <Icon name="logs" size={13} /> 日志
+                      </button>
+                    </div>
                     <button
                       className="ghost dataset-action dataset-action--quiet"
                       disabled={!d.images}
@@ -619,6 +697,29 @@ export default function DatasetsPage() {
             value={snapLimit}
             onChange={(e) => setSnapLimit(e.target.value)}
           />
+        </Modal>
+      )}
+
+      {logTarget && (
+        <Modal
+          title={"YOLO 预标注日志 · " + logTarget}
+          width={760}
+          tall
+          onClose={() => setLogTarget(null)}
+        >
+          <div className="prelabel-log-summary">
+            <span className={logStatus?.running ? "is-running" : ""}>
+              {logStatus?.running ? "运行中" : logStatus?.error ? "执行失败" : "已完成"}
+            </span>
+            <span>模型：{logStatus?.models?.length ? logStatus.models.join("、") : "加载中…"}</span>
+            <span>
+              进度：{logStatus?.done ?? 0}/{logStatus?.total ?? 0}
+              {logStatus?.failed ? " · 失败 " + logStatus.failed : ""}
+            </span>
+          </div>
+          <pre ref={logRef} className="log prelabel-log">
+            {logLines.length ? logLines.join("\n") : "暂无日志，任务启动后会在这里显示处理进度。"}
+          </pre>
         </Modal>
       )}
 
