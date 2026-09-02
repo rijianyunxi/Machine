@@ -9,9 +9,18 @@ import { useToast } from "../ui/Toast";
 import { useLightbox } from "../ui/Lightbox";
 import { Chip, Empty, useBusy } from "../ui/badges";
 
+type DatasetSplit = "train" | "val" | "test";
+
+const SPLIT_LABELS: Record<DatasetSplit, string> = {
+  train: "训练集",
+  val: "验证集",
+  test: "测试集",
+};
+
 interface ImgInfo {
   file: string;
   stem: string;
+  split: DatasetSplit;
   labeled: boolean;
   boxes: number;
 }
@@ -24,7 +33,9 @@ export default function DatasetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [cName, setCName] = useState("");
   const [cClasses, setCClasses] = useState("");
+  const [uploadSplits, setUploadSplits] = useState<Record<string, DatasetSplit>>({});
   const [snapTarget, setSnapTarget] = useState<string | null>(null);
+  const [snapSplit, setSnapSplit] = useState<DatasetSplit>("train");
   const [snapDate, setSnapDate] = useState("");
   const [snapLimit, setSnapLimit] = useState("200");
   const [pre, setPre] = useState<Record<string, PrelabelStatus>>({});
@@ -87,16 +98,21 @@ export default function DatasetsPage() {
     }
   });
 
-  const uploadImages = async (name: string, files: FileList | null) => {
+  const uploadImages = async (
+    name: string,
+    files: FileList | null,
+    split: DatasetSplit,
+  ) => {
     if (!files?.length) return;
     const fd = new FormData();
     for (const f of files) fd.append("images", f);
+    fd.append("split", split);
     try {
       const d = await api<{ added: number }>(
         `/api/datasets/${encodeURIComponent(name)}/images`,
         { method: "POST", body: fd },
       );
-      toast(`已导入 ${d.added} 张`);
+      toast(`已导入 ${d.added} 张到${SPLIT_LABELS[split]}`);
       refresh();
     } catch (e) {
       toast((e as Error).message || "导入失败", false);
@@ -110,10 +126,14 @@ export default function DatasetsPage() {
         `/api/datasets/${encodeURIComponent(snapTarget)}/import_snapshots`,
         {
           method: "POST",
-          body: { date: snapDate.trim() || null, limit: +snapLimit || 200 },
+          body: {
+            date: snapDate.trim() || null,
+            limit: +snapLimit || 200,
+            split: snapSplit,
+          },
         },
       );
-      toast(`已导入 ${r.imported} 张快照`);
+      toast(`已导入 ${r.imported} 张快照到${SPLIT_LABELS[snapSplit]}`);
       setSnapTarget(null);
       refresh();
     } catch (e) {
@@ -351,12 +371,29 @@ export default function DatasetsPage() {
                     >
                       <Icon name="edit" size={14} /> 打开标注
                     </a>
-                    <button
-                      className="ghost dataset-action dataset-action--secondary"
-                      onClick={() => fileRefs.current[d.name]?.click()}
-                    >
-                      <Icon name="upload" size={14} /> 导入图片
-                    </button>
+                    <div className="dataset-upload-action">
+                      <select
+                        className="dataset-split-select"
+                        aria-label={`${d.name} 图片导入目标`}
+                        value={uploadSplits[d.name] ?? "train"}
+                        onChange={(e) =>
+                          setUploadSplits((m) => ({
+                            ...m,
+                            [d.name]: e.target.value as DatasetSplit,
+                          }))
+                        }
+                      >
+                        <option value="train">训练集</option>
+                        <option value="val">验证集</option>
+                        <option value="test">测试集</option>
+                      </select>
+                      <button
+                        className="ghost dataset-action dataset-action--secondary"
+                        onClick={() => fileRefs.current[d.name]?.click()}
+                      >
+                        <Icon name="upload" size={14} /> 导入图片
+                      </button>
+                    </div>
                     <input
                       ref={(el) => {
                         fileRefs.current[d.name] = el;
@@ -367,7 +404,11 @@ export default function DatasetsPage() {
                       accept=".jpg,.jpeg,.png,.webp"
                       aria-label={`向 ${d.name} 导入图片`}
                       onChange={(e) => {
-                        uploadImages(d.name, e.target.files);
+                        uploadImages(
+                          d.name,
+                          e.target.files,
+                          uploadSplits[d.name] ?? "train",
+                        );
                         e.target.value = "";
                       }}
                     />
@@ -375,7 +416,10 @@ export default function DatasetsPage() {
                   <div className="dataset-card__secondary-actions">
                     <button
                       className="ghost dataset-action dataset-action--quiet"
-                      onClick={() => setSnapTarget(d.name)}
+                      onClick={() => {
+                        setSnapTarget(d.name);
+                        setSnapSplit("train");
+                      }}
                     >
                       <Icon name="camera" size={13} /> 从快照导入
                     </button>
@@ -473,6 +517,16 @@ export default function DatasetsPage() {
           <p className="muted" style={{ marginBottom: 6 }}>
             导入到数据集：{snapTarget}
           </p>
+          <label>导入到</label>
+          <select
+            className="w240"
+            value={snapSplit}
+            onChange={(e) => setSnapSplit(e.target.value as DatasetSplit)}
+          >
+            <option value="train">训练集</option>
+            <option value="val">验证集</option>
+            <option value="test">测试集</option>
+          </select>
           <label>日期（留空 = 最近日期优先）</label>
           <input
             className="w240"
@@ -494,6 +548,7 @@ export default function DatasetsPage() {
         <Modal
           title={`管理图片 · ${mgr.name}`}
           width={880}
+          tall
           onClose={() => setMgr(null)}
           footer={
             <>
@@ -567,6 +622,9 @@ export default function DatasetsPage() {
                   <figcaption className="meta">
                     <span className="fname" title={im.file}>
                       {im.file}
+                    </span>
+                    <span className="chip plain split-chip">
+                      {SPLIT_LABELS[im.split]}
                     </span>
                     {im.labeled ? (
                       <span className="chip green" style={{ padding: "1px 7px", fontSize: 10.5 }}>

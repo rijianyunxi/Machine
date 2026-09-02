@@ -222,6 +222,9 @@ class DatasetService:
 
     def add_images(self, name: str, files: list, split: str = "train") -> int:
         """files: list of (filename, bytes); defaults to the train split."""
+        if split not in SPLIT_KEYS:
+            raise DatasetError("非法 split")
+        self._ensure_split(name, split)
         added = 0
         for filename, content in files:
             ext = Path(filename).suffix.lower()
@@ -230,8 +233,6 @@ class DatasetService:
             if len(content) > 25 * 1024 * 1024:
                 continue
             base = re.sub(r"[^\w.\-]", "_", Path(filename).stem)[:80] or "img"
-            if split not in SPLIT_KEYS:
-                raise DatasetError("非法 split")
             images_dir, labels_dir = self._ensure_split(name, split)
             dest = images_dir / f"{base}{ext}"
             i = 1
@@ -243,8 +244,10 @@ class DatasetService:
         return added
 
     def import_snapshots(self, name: str, date: str = None,
-                         limit: int = 300) -> int:
-        """Copy detection snapshots into the train split."""
+                         limit: int = 300, split: str = "train") -> int:
+        """Copy detection snapshots into the selected dataset split."""
+        if split not in SPLIT_KEYS:
+            raise DatasetError("非法 split")
         base = self.state.snapshots_dir()
         if not base.exists():
             return 0
@@ -261,7 +264,7 @@ class DatasetService:
         files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         for img in files[: max(0, int(limit))]:
             with open(img, "rb") as fh:
-                if self.add_images(name, [(img.name, fh.read())]):
+                if self.add_images(name, [(img.name, fh.read())], split=split):
                     count += 1
             if count >= int(limit):
                 break

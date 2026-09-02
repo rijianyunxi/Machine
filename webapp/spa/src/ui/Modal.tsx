@@ -47,7 +47,7 @@ export function Modal({
 
   return (
     <div
-      className="modal-mask open"
+      className={"modal-mask open" + (tall ? " modal-mask-tall" : "")}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

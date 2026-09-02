@@ -66,7 +66,11 @@ async def upload_images(request: Request, name: str,
 def import_snapshots(request: Request, name: str, data: dict):
     try:
         n = get_state(request).datasets.import_snapshots(
-            name, date=data.get("date"), limit=int(data.get("limit", 300)))
+            name,
+            date=data.get("date"),
+            limit=int(data.get("limit", 300)),
+            split=data.get("split", "train"),
+        )
         return {"imported": n}
     except ValueError as e:
         raise HTTPException(400, str(e))
