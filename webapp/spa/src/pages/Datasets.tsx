@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { DatasetInfo, PrelabelStatus } from "../api/types";
+import type { DatasetInfo, ModelsResponse, PrelabelStatus } from "../api/types";
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { Modal } from "../ui/Modal";
@@ -42,6 +42,7 @@ export default function DatasetsPage() {
   const [snapDate, setSnapDate] = useState("");
   const [snapLimit, setSnapLimit] = useState("200");
   const [pre, setPre] = useState<Record<string, PrelabelStatus>>({});
+  const [loadedModels, setLoadedModels] = useState<string[] | null>(null);
   const [mgr, setMgr] = useState<{ name: string; images: ImgInfo[] } | null>(
     null,
   );
@@ -58,11 +59,21 @@ export default function DatasetsPage() {
     setDatasets(r.datasets);
   }, []);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const refreshModelStatus = useCallback(async () => {
+    try {
+      const r = await api<ModelsResponse>("/api/models");
+      setLoadedModels((r.models || []).filter((m) => m.loaded).map((m) => m.name));
+    } catch {
+      setLoadedModels(null);
+    }
+  }, []);
 
-  // AI 预标注进度轮询：有运行中的任务时 1.5s 一次
+  useEffect(() => {
+    void refresh();
+    void refreshModelStatus();
+  }, [refresh, refreshModelStatus]);
+
+  // YOLO 批量预标注进度轮询：有运行中的任务时 1.5s 一次
   useEffect(() => {
     const running = Object.entries(pre).filter(([, s]) => s.running);
     if (!running.length) return;
@@ -74,8 +85,9 @@ export default function DatasetsPage() {
           );
           setPre((m) => ({ ...m, [name]: s }));
           if (!s.running) {
-            if (s.error) toast(s.error, false);
-            else if (s.total) toast(`预标注完成：${s.done}/${s.total} 张`);
+            if (s.error) toast(`YOLO 批量预标注失败：${s.error}`, false);
+            else if (s.total) toast(`YOLO 批量预标注完成：${s.done}/${s.total} 张`);
+            else toast("没有符合条件的未标注图片");
             refresh();
           }
         } catch {
@@ -150,10 +162,19 @@ export default function DatasetsPage() {
     try {
       await api(`/api/datasets/${encodeURIComponent(name)}/prelabel`, {
         method: "POST",
+        // Empty model means all currently loaded local YOLO detectors.
         body: { model: "", conf: 0.4, only_unlabeled: true, limit: 200 },
       });
-      toast("AI 预标注已启动，可离开本页（后台执行）");
-      setPre((m) => ({ ...m, [name]: { running: true, done: 0, total: 0 } }));
+      toast("YOLO 批量预标注已启动，可离开本页（后台执行）");
+      setPre((m) => ({
+        ...m,
+        [name]: {
+          running: true,
+          done: 0,
+          total: 0,
+          models: loadedModels || [],
+        },
+      }));
     } catch (e) {
       toast((e as Error).message, false);
     } finally {
@@ -241,7 +262,7 @@ export default function DatasetsPage() {
   return (
     <Page
       title="数据集"
-      subtitle="管理训练图片、类别与标注进度，支持快照导入和 AI 批量预标注"
+      subtitle="管理训练图片、类别与标注进度，支持快照导入和 YOLO 批量预标注"
       actions={
         <button onClick={() => setCreateOpen(true)}>
           <Icon name="plus" size={14} /> 新建数据集
@@ -417,6 +438,35 @@ export default function DatasetsPage() {
                       }}
                     />
                   </div>
+                  <div className="dataset-card__prelabel-info">
+                    <div className="dataset-card__prelabel-title">
+                      <Chip text="YOLO 检测模型" color="blue" />
+                      <span>本地模型标注，不是 AI 大模型</span>
+                    </div>
+                    <div className="dataset-card__prelabel-detail">
+                      {prelabelStatus?.running
+                        ? prelabelStatus.total
+                          ? `正在处理未标注图片：${prelabelStatus.done}/${prelabelStatus.total} 张`
+                          : "正在扫描未标注图片…"
+                        : prelabelStatus?.error
+                          ? `上次失败：${prelabelStatus.error}`
+                          : prelabelStatus && prelabelStatus.total
+                            ? `上次完成：${prelabelStatus.done}/${prelabelStatus.total} 张`
+                            : "仅处理未标注图片，最多 200 张；标签按原 train/val/test 保存"}
+                    </div>
+                    <div className="dataset-card__prelabel-models">
+                      使用模型：{(prelabelStatus?.models?.length
+                        ? prelabelStatus.models
+                        : loadedModels)?.length
+                        ? (prelabelStatus?.models?.length
+                            ? prelabelStatus.models
+                            : loadedModels
+                          )!.join("、")
+                        : loadedModels === null
+                          ? "模型状态读取失败"
+                          : "暂无已加载模型"}
+                    </div>
+                  </div>
                   <div className="dataset-card__secondary-actions">
                     <button
                       className="ghost dataset-action dataset-action--quiet"
@@ -432,14 +482,15 @@ export default function DatasetsPage() {
                         prelabelStatus?.running ? " is-running" : ""
                       }`}
                       disabled={busyPl || !!prelabelStatus?.running}
+                      title="使用当前已加载的本地 YOLO 检测模型，不调用大模型；仅处理未标注图片，最多 200 张"
                       onClick={() => prelabel(d.name)}
                     >
                       <Icon name="sparkles" size={13} />
                       {prelabelStatus?.running
                         ? prelabelStatus.total
-                          ? `预标注 ${prelabelStatus.done}/${prelabelStatus.total}`
-                          : "正在启动…"
-                        : "AI 预标注"}
+                          ? `YOLO 标注 ${prelabelStatus.done}/${prelabelStatus.total}`
+                          : "YOLO 正在扫描…"
+                        : "YOLO 批量预标注"}
                     </button>
                     <button
                       className="ghost dataset-action dataset-action--quiet"

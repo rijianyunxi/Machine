@@ -44,7 +44,7 @@ class DatasetService:
         migrate_legacy_runtime_dirs()
         ensure_storage_dirs()
         self._prelabel_job = {"running": False, "done": 0, "total": 0,
-                              "error": None}
+                              "models": [], "error": None}
 
     # ---------- paths ----------
 
@@ -425,8 +425,9 @@ class DatasetService:
         detector = self.state._get_standalone_detector()
         if detector is None or not detector.loaded_models:
             raise DatasetError("没有可用的检测模型")
+        selected_models = [model] if model else list(detector.loaded_models)
         self._prelabel_job = {"running": True, "done": 0, "total": 0,
-                              "error": None}
+                              "models": selected_models, "error": None}
 
         def job():
             try:

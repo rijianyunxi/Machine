@@ -182,6 +182,7 @@ export interface PrelabelStatus {
   running: boolean;
   done: number;
   total: number;
+  models?: string[];
   error?: string | null;
 }
 
