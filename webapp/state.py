@@ -855,6 +855,8 @@ class RuntimeState:
             entry = {
                 "id": r.id, "name": r.name, "description": r.description,
                 "revision": int(r.revision),
+                # 业务分类与 params/graph 中的检测类别是两套概念，均返回给前端。
+                "category": r.category,
                 "template": r.template, "models": r.models, "params": r.params,
                 "severity": r.severity, "enabled": r.enabled,
                 "cameras": camera_usage.get(r.id, []),

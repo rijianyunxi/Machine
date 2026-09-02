@@ -40,6 +40,42 @@ const attachGraphModels = (graph: RuleGraph, models: string[]): RuleGraph => ({
   ),
 });
 
+/*
+ * 规则卡片展示的是“检测类别”，不是业务 category。
+ * 普通模板的类别在 rule.params（trigger_classes/person_classes/...）中，
+ * 画布模板的类别在各检测节点 params.classes/ref_classes 中；
+ * zones、模型名以及其它数组参数不能混入这里。
+ */
+const isClassParam = (name: string): boolean =>
+  name === "classes" || name === "class_names" || name.endsWith("_classes");
+
+function ruleClasses(rule: RuleEntry): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item !== "string") continue;
+      const cls = item.trim();
+      if (!cls) continue;
+      const key = cls.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(cls);
+    }
+  };
+
+  for (const [name, value] of Object.entries(rule.params || {})) {
+    if (isClassParam(name)) add(value);
+  }
+  for (const node of rule.graph?.nodes || []) {
+    for (const [name, value] of Object.entries(node.params || {})) {
+      if (isClassParam(name)) add(value);
+    }
+  }
+  return result;
+}
+
 /* 判定逻辑 -> 规则落盘时使用的内部模板名（模板已从界面隐藏，仅作存储机制） */
 const LOGIC_CANONICAL: Record<string, string> = {
   presence: "generic_presence",
@@ -575,21 +611,12 @@ export default function RulesPage() {
                   <span>{logicLabel(r.template)}</span>
                 )}
                 <span>
-                  类别{" "}
+                  检测类别{" "}
                   {(() => {
-                    // 只聚合字符串数组（类别参数）；zones 等对象数组跳过
-                    const clsParams = Object.entries(r.params).filter(
-                      ([, v]) =>
-                        Array.isArray(v) && v.every((x) => typeof x === "string"),
-                    );
-                    const all = [
-                      ...new Set(
-                        clsParams.flatMap(([, v]) => v as string[]),
-                      ),
-                    ];
-                    return all.length
-                      ? all.map((c) => <Chip key={c} text={c} />)
-                      : "—";
+                    const classes = ruleClasses(r);
+                    return classes.length
+                      ? classes.map((cls) => <Chip key={cls} text={cls} />)
+                      : <span className="muted">未配置</span>;
                   })()}
                 </span>
                 <span>{r.cameras.length ? `${r.cameras.length} 路监控` : "未分配监控"}</span>

@@ -82,6 +82,8 @@ export interface RuleEntry {
   revision: number;
   name: string;
   description: string;
+  /** 规则业务分类（后端持久化字段，不等同于检测类别） */
+  category: string;
   template: string;
   models: string[];
   params: Record<string, unknown>;
