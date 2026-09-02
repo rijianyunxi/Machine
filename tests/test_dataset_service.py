@@ -3,7 +3,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from webapp.dataset_service import DatasetError, DatasetService
+from webapp.dataset_service import (
+    DatasetBusyError,
+    DatasetError,
+    DatasetService,
+)
 
 
 class DatasetServiceSplitTests(unittest.TestCase):
@@ -23,6 +27,33 @@ class DatasetServiceSplitTests(unittest.TestCase):
             (self.dataset_dir / "images" / split).mkdir(parents=True)
             (self.dataset_dir / "labels" / split).mkdir(parents=True)
         return service
+
+    def test_delete_blocks_running_prelabel_and_clears_finished_logs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            service = self._service(root)
+            service._prelabel_job = {
+                "running": True,
+                "dataset": "demo",
+                "logs": ["正在处理 demo"],
+            }
+            with patch("webapp.dataset_service.resolve_dataset_dir",
+                       return_value=self.dataset_dir):
+                with self.assertRaises(DatasetBusyError):
+                    service.delete("demo")
+            self.assertTrue(self.dataset_dir.exists())
+
+            service._prelabel_job = {
+                "running": False,
+                "dataset": "demo",
+                "logs": ["任务完成"],
+            }
+            with patch("webapp.dataset_service.resolve_dataset_dir",
+                       return_value=self.dataset_dir):
+                service.delete("demo")
+            self.assertFalse(self.dataset_dir.exists())
+            self.assertEqual(service._prelabel_job["logs"], [])
+            self.assertFalse(service._prelabel_job["running"])
 
     def test_duplicate_filename_operations_are_split_aware(self):
         with tempfile.TemporaryDirectory() as td:

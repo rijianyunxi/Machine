@@ -38,13 +38,14 @@ class DatasetError(ValueError):
     pass
 
 
+class DatasetBusyError(DatasetError):
+    """Raised when an operation conflicts with an active dataset job."""
+
+
 class DatasetService:
-    def __init__(self, state):
-        self.state = state
-        self._lock = threading.Lock()
-        migrate_legacy_runtime_dirs()
-        ensure_storage_dirs()
-        self._prelabel_job = {
+    @staticmethod
+    def _idle_prelabel_job() -> dict:
+        return {
             "running": False,
             "dataset": None,
             "done": 0,
@@ -56,6 +57,13 @@ class DatasetService:
             "finished_at": None,
             "logs": [],
         }
+
+    def __init__(self, state):
+        self.state = state
+        self._lock = threading.Lock()
+        migrate_legacy_runtime_dirs()
+        ensure_storage_dirs()
+        self._prelabel_job = self._idle_prelabel_job()
 
     # ---------- paths ----------
 
@@ -212,7 +220,30 @@ class DatasetService:
         d = self._dir(name)
         if not d.exists():
             raise DatasetError(f"数据集不存在: {name}")
-        shutil.rmtree(d, ignore_errors=True)
+
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            if (self._prelabel_job.get("running") and
+                    self._prelabel_job.get("dataset") == name):
+                raise DatasetBusyError(
+                    "数据集正在执行 YOLO 预标注，请等待任务完成后再删除"
+                )
+            shutil.rmtree(d, ignore_errors=True)
+            if self._prelabel_job.get("dataset") == name:
+                self._prelabel_job = self._idle_prelabel_job()
+            return
+
+        # Keep the check and removal under the same lock as task creation so a
+        # delete cannot race with a prelabel job starting for this dataset.
+        with lock:
+            if (self._prelabel_job.get("running") and
+                    self._prelabel_job.get("dataset") == name):
+                raise DatasetBusyError(
+                    "数据集正在执行 YOLO 预标注，请等待任务完成后再删除"
+                )
+            shutil.rmtree(d, ignore_errors=True)
+            if self._prelabel_job.get("dataset") == name:
+                self._prelabel_job = self._idle_prelabel_job()
 
     def info(self, name: str) -> dict:
         doc = self._load_yaml(name)
@@ -491,6 +522,7 @@ class DatasetService:
         started_at = datetime.now().isoformat(timespec="seconds")
         lock = getattr(self, "_lock", None)
         if lock is None:
+            self._load_yaml(name)
             if self._prelabel_job.get("running"):
                 raise DatasetError("已有预标注任务在运行")
             self._prelabel_job = {
@@ -507,6 +539,10 @@ class DatasetService:
             }
         else:
             with lock:
+                # Validate while holding the same lock used by delete().
+                # This prevents a delete/start race from creating a job for a
+                # dataset that has just been removed.
+                self._load_yaml(name)
                 if self._prelabel_job.get("running"):
                     raise DatasetError("已有预标注任务在运行")
                 self._prelabel_job = {

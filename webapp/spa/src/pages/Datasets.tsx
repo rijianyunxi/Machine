@@ -576,6 +576,8 @@ export default function DatasetsPage() {
                     </button>
                     <button
                       className="danger dataset-action dataset-action--danger"
+                      disabled={prelabelWorking}
+                      title={prelabelWorking ? "预标注运行中，完成后才能删除数据集" : "删除数据集及其图片和标注"}
                       onClick={() => del(d.name)}
                     >
                       <Icon name="trash" size={13} /> 删除

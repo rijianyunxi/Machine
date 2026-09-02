@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.responses import FileResponse
 
 from webapp.api.common import get_state
+from webapp.dataset_service import DatasetBusyError
 
 router = APIRouter()
 
@@ -34,6 +35,8 @@ def dataset_info(request: Request, name: str):
 def delete_dataset(request: Request, name: str):
     try:
         get_state(request).datasets.delete(name)
+    except DatasetBusyError as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(404, str(e))
     return {"ok": True}
