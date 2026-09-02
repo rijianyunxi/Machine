@@ -1238,7 +1238,13 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 .dataset-card__secondary-actions { display: grid; gap: 8px; }
 .dataset-card__primary-actions { grid-template-columns: 1.15fr 1fr; }
 .dataset-card__secondary-actions {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* The prelabel/log pair is one grid item, so it needs a wider track than
+     the three standalone actions or its nested buttons get squeezed. */
+  grid-template-columns:
+    minmax(0, 1.3fr)
+    minmax(0, 2.4fr)
+    minmax(0, 1.3fr)
+    minmax(0, 1.3fr);
   margin-top: 8px;
 }
 .dataset-card__file-input { display: none; }
@@ -1354,10 +1360,14 @@ a.dataset-action:hover { text-decoration: none; }
 .dataset-prelabel-actions {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(42px, .55fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 8px;
 }
 .dataset-prelabel-actions > button { min-width: 0; }
+.dataset-prelabel-actions > button:last-child {
+  min-width: 52px;
+  padding-inline: 8px;
+}
 .dataset-action__spinner {
   display: inline-flex;
   animation: spin 0.85s linear infinite;

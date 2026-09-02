@@ -17,6 +17,27 @@ const SPLIT_LABELS: Record<DatasetSplit, string> = {
   test: "测试集",
 };
 
+/**
+ * Older running servers may not return the optional logs field. Do not let
+ * that response erase logs already shown by the client; when no server log
+ * is available, keep a visible progress hint instead of showing an empty log.
+ */
+function mergePrelabelStatus(
+  previous: PrelabelStatus | undefined,
+  next: PrelabelStatus,
+): PrelabelStatus {
+  const serverLogs = Array.isArray(next.logs) ? next.logs : [];
+  const previousLogs = previous?.logs ?? [];
+  const logs = serverLogs.length
+    ? serverLogs
+    : previousLogs.length
+      ? previousLogs
+      : next.running
+        ? [`任务运行中 · 当前进度 ${next.done}/${next.total}`]
+        : [];
+  return { ...next, logs };
+}
+
 interface ImgInfo {
   file: string;
   stem: string;
@@ -110,10 +131,15 @@ export default function DatasetsPage() {
         }),
       );
       if (cancelled) return;
-      setPre((current) => ({
-        ...current,
-        ...Object.fromEntries(entries.filter(Boolean) as Array<readonly [string, PrelabelStatus]>),
-      }));
+      setPre((current) => {
+        const next = { ...current };
+        for (const entry of entries) {
+          if (!entry) continue;
+          const [name, status] = entry;
+          next[name] = mergePrelabelStatus(current[name], status);
+        }
+        return next;
+      });
     };
     void loadStatuses();
     return () => {
@@ -131,7 +157,10 @@ export default function DatasetsPage() {
           const s = await api<PrelabelStatus>(
             `/api/datasets/${encodeURIComponent(name)}/prelabel_status`,
           );
-          setPre((m) => ({ ...m, [name]: s }));
+          setPre((m) => ({
+            ...m,
+            [name]: mergePrelabelStatus(m[name], s),
+          }));
           if (!s.running) {
             if (s.error) toast(`YOLO 批量预标注失败：${s.error}`, false);
             else if (s.total) toast(`YOLO 批量预标注完成：${s.done}/${s.total} 张`);
