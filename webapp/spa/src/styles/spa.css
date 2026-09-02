@@ -69,12 +69,12 @@
 
 /* 亮色下主按钮改为参考站的近黑实心（含 mini 尺寸，保持主次一致）。
  * :not() 排除所有"非实心主按钮"的自定义控件，避免它们被染成黑块。 */
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item):not(.select-trigger):not(.select-option) {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item):not(.select-trigger):not(.select-option):not(.llm-model-option) {
   background: #232425;
   border-color: #232425;
   color: #fff;
 }
-:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item):not(.select-trigger):not(.select-option):hover {
+:root[data-theme="light"] button:not(.ghost):not(.danger):not(.theme-toggle):not(.modal-x):not(.lightbox-x):not(.lb-arrow):not(.seg button):not(.page-tabs .tab):not(.anno-tabs .tab):not(.settings-tab):not(.graph-pal-item):not(.select-trigger):not(.select-option):not(.llm-model-option):hover {
   background: #35373a;
   filter: none;
 }
@@ -1078,9 +1078,15 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.llm-model-option:hover, .llm-model-option.selected {
-  background: var(--surface-2);
+.llm-model-option:hover {
+  background: var(--surface-3);
   color: var(--text);
+  filter: none;
+}
+.llm-model-option.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
   filter: none;
 }
 @media (max-width: 680px) {
