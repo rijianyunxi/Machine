@@ -100,11 +100,11 @@ python tools/restore_machine.py storage/backups/machine-YYYYMMDD-HHMMSS \
 
 ### 新机器 / 空数据库首次启动
 
-`storage/` 主要保存本地运行数据（数据库、快照、日志、数据集）；其中 `storage/models/` 保留可随仓库分发的基础模型。把项目复制或克隆到另一台电脑后，首次启动可能只有一个空的 `storage/machine.db`。此时 `main.py` 会进入“等待模型配置”状态，不会再因为没有模型而退出：
+`storage/` 主要保存本地运行数据（数据库、模型、快照、日志、数据集）。模型文件不随仓库分发；把项目复制或克隆到另一台电脑后，首次启动可能只有一个空的 `storage/machine.db`。此时 `main.py` 会进入“等待模型配置”状态，不会再因为没有模型而退出：
 
 1. 运行 `python main.py`；
 2. 打开 `http://localhost:8000/app/models`；
-3. 上传或选择 `storage/models/` 下的 `.pt` 文件，注册并启用；
+3. 上传 `.pt` 模型文件，或先将模型挂载到 `storage/models/`，再注册并启用；
 4. 回到「规则配置」绑定模型，再配置摄像头。
 
 也可以先运行独立面板 `python -m webapp.server` 完成模型注册，之后再启动 `python main.py`。如果要迁移已有配置，请使用备份工具恢复 `machine.db`，并同时恢复模型文件；不要直接把另一台电脑的绝对路径原样写入数据库。
@@ -136,4 +136,4 @@ python -m compileall application core infrastructure tools webapp
 cd webapp/spa && npm install && npm run build
 ```
 
-除 `storage/models/` 中明确随仓库分发的基础权重外，`storage/` 下的运行数据（数据集、截图、日志、备份）和包含凭据的本地配置不应提交 Git。
+`storage/` 下全部是运行时数据，包括数据库、模型、数据集、截图、日志和备份，不应提交 Git。模型请通过面板上传，或在部署时单独挂载到 `storage/models/`。

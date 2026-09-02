@@ -1,0 +1,16 @@
+services:
+  machine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: machine:local
+    ports:
+      - "${MACHINE_PORT:-8000}:8000"
+    volumes:
+      - machine-storage:/app/storage
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: "1"
+
+volumes:
+  machine-storage:

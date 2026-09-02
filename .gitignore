@@ -1,26 +1,20 @@
-# 环境与依赖
+# Python environment and cache
 .venv/
-webapp/spa/node_modules/
-
-# Python 运行缓存
 __pycache__/
 *.py[cod]
 
-# IDE / 系统
+# Frontend dependencies and build output
+webapp/spa/node_modules/
+webapp/spa/dist/
+
+# IDE and operating system files
 .idea/
 .DS_Store
 Thumbs.db
 
-# 配置自动备份
+# Backup and generated training files
 *.yaml.bak
-
-# 运行数据与训练产物
-storage/*
-# Keep shipped base model assets in the canonical runtime location.
-!storage/models/
-storage/models/*
-!storage/models/README.md
-!storage/models/yolov8n.pt
-!storage/models/yolov8-ppe.pt
-!storage/models/yolov8-smoking.pt
 runs/
+
+# Runtime data: database, logs, datasets, snapshots and models
+storage/

@@ -1,0 +1,18 @@
+# VCS and local environments
+.git
+.github
+.venv
+.idea
+
+# Python caches and local test artifacts
+__pycache__
+*.py[cod]
+.pytest_cache
+runs
+
+# Frontend dependencies/build output; the Dockerfile builds the panel itself.
+webapp/spa/node_modules
+webapp/spa/dist
+
+# All runtime data is persisted outside the image.
+storage/
