@@ -46,7 +46,7 @@ export function LoginForm({
       <label>用户名</label>
       <input
         style={{ width: "100%" }}
-        placeholder="admin"
+        placeholder="请输入用户名"
         autoComplete="username"
         value={user}
         onChange={(e) => setUser(e.target.value)}
@@ -55,7 +55,7 @@ export function LoginForm({
       <input
         style={{ width: "100%" }}
         type="password"
-        placeholder="••••••••"
+        placeholder="请输入密码"
         autoComplete="current-password"
         value={pass}
         onChange={(e) => setPass(e.target.value)}
