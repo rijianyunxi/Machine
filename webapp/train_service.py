@@ -13,6 +13,13 @@ import sys
 import threading
 from pathlib import Path
 
+from infrastructure.storage_paths import (
+    MODELS_DIR,
+    canonical_model_reference,
+    ensure_storage_dirs,
+    resolve_model_path,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WORKER = Path(__file__).resolve().parent / "train_worker.py"
 
@@ -20,6 +27,7 @@ WORKER = Path(__file__).resolve().parent / "train_worker.py"
 class TrainService:
     def __init__(self, state):
         self.state = state
+        ensure_storage_dirs()
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._meta: dict = {}
@@ -36,15 +44,18 @@ class TrainService:
             if not Path(name).name == name:
                 raise RuntimeError("非法任务名")
 
-            ds_yaml = PROJECT_ROOT / "datasets" / dataset / "dataset.yaml"
-            if not ds_yaml.exists():
+            ds_yaml = self.state.datasets.yaml_path(dataset)
+            if not ds_yaml.is_file():
                 raise RuntimeError(f"数据集不存在: {dataset}")
-            model_path = base_model
-            cand = PROJECT_ROOT / "models" / base_model
-            if cand.exists():
-                model_path = str(cand)
-            elif not Path(base_model).exists():
+            resolved_model = resolve_model_path(base_model)
+            if resolved_model.is_file():
+                model_path = str(resolved_model)
+            elif Path(base_model).is_absolute() or "/" in base_model or "\\" in base_model:
                 raise RuntimeError(f"基础模型不存在: {base_model}")
+            else:
+                # Ultralytics accepts official model names and downloads them
+                # when necessary (for example yolov8n.pt).
+                model_path = base_model
 
             args = {
                 "data": str(ds_yaml),
@@ -127,8 +138,9 @@ class TrainService:
         best = Path(meta.get("run_dir", "")) / "weights" / "best.pt"
         out["best_path"] = str(best) if best.exists() else None
         out["registered"] = (best.exists() and
-                             f"models/{best.name}" in
-                             [m.get("path") for m in self.state.settings()
+                             canonical_model_reference(best.name) in
+                             [canonical_model_reference(m.get("path", ""))
+                              for m in self.state.settings()
                               .get("model", {}).get("models", [])])
         return out
 
@@ -149,11 +161,12 @@ class TrainService:
         return out
 
     def register_best(self, name: str, model_name: str) -> dict:
-        """Copy best.pt of a finished run into models/ and register it."""
+        """Copy best.pt of a finished run into storage/models and register it."""
         run_best = PROJECT_ROOT / "runs" / "panel" / name / "weights" / "best.pt"
         if not run_best.exists():
             raise RuntimeError("该任务还没有 best.pt（未完成或已失败）")
-        dest = PROJECT_ROOT / "models" / f"{model_name}.pt"
+        dest = MODELS_DIR / f"{model_name}.pt"
+        dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(run_best.read_bytes())
         self.state.register_model(model_name, dest.name, enabled=False)
         return {"file": dest.name, "model": model_name}

@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from infrastructure.storage_paths import resolve_model_path
 from utils.logger import get_logger
 
 
@@ -46,15 +47,9 @@ class DetectionError(RuntimeError):
         super().__init__(f"Detection failed for model [{model_name}]: {message}")
 
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
 def _resolve_model_path(path: str) -> str:
-    """Resolve relative model paths against the project root, not the CWD."""
-    if os.path.isabs(path) or os.path.exists(path):
-        return path
-    candidate = os.path.join(_PROJECT_ROOT, path)
-    return candidate if os.path.exists(candidate) else path
+    """Resolve canonical and legacy model references independent of CWD."""
+    return str(resolve_model_path(path))
 
 
 class Detector:

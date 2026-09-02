@@ -173,7 +173,7 @@ export default function TrainPage() {
               <option value="">无数据集，请先创建</option>
             )}
           </select>
-          <label>基础模型（models/ 目录下的 .pt，或官方名）</label>
+          <label>基础模型（storage/models/ 目录下的 .pt，或官方名）</label>
           <select
             style={{ width: "100%" }}
             value={form.base_model}

@@ -337,7 +337,7 @@ export default function ModelsPage() {
                 ) : (
                   <tr>
                     <td>
-                      <Empty>models/ 目录暂无 .pt 文件</Empty>
+                      <Empty>storage/models/ 目录暂无 .pt 文件</Empty>
                     </td>
                   </tr>
                 )}

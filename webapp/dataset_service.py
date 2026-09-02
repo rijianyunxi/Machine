@@ -2,7 +2,7 @@
 Dataset management for online annotation and training.
 
 Standard YOLO layout:
-  datasets/<name>/
+  storage/datasets/<name>/
     dataset.yaml          # portable relative train/val/test + names
     images/train/*.jpg
     images/val/*.jpg
@@ -19,8 +19,14 @@ from pathlib import Path
 
 import yaml
 
+from infrastructure.storage_paths import (
+    DATASETS_DIR,
+    ensure_storage_dirs,
+    migrate_legacy_runtime_dirs,
+    resolve_dataset_dir,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATASETS_DIR = PROJECT_ROOT / "datasets"
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 SAFE_NAME = re.compile(r"^[\w\-]{1,64}$")
 SAFE_FILE = re.compile(r"^[\w.\-]{1,128}$")
@@ -35,7 +41,8 @@ class DatasetService:
     def __init__(self, state):
         self.state = state
         self._lock = threading.Lock()
-        DATASETS_DIR.mkdir(exist_ok=True)
+        migrate_legacy_runtime_dirs()
+        ensure_storage_dirs()
         self._prelabel_job = {"running": False, "done": 0, "total": 0,
                               "error": None}
 
@@ -48,7 +55,7 @@ class DatasetService:
         return name
 
     def _dir(self, name: str) -> Path:
-        return DATASETS_DIR / self._check_name(name)
+        return resolve_dataset_dir(self._check_name(name))
 
     def _yaml_file(self, name: str) -> Path:
         """Prefer project YAML, but accept common standard YOLO names."""
@@ -61,6 +68,10 @@ class DatasetService:
 
     def _yaml_path(self, name: str) -> Path:
         return self._yaml_file(name)
+
+    def yaml_path(self, name: str) -> Path:
+        """Return the dataset YAML path used by training/inference."""
+        return self._yaml_path(name)
 
     @staticmethod
     def _labels_dir_for_images(root: Path, images_dir: Path) -> Path:

@@ -96,15 +96,15 @@ python tools/restore_machine.py storage/backups/machine-YYYYMMDD-HHMMSS \
 
 备份目录包含 `machine.db`、脱敏配置、`manifest.json` 以及模型/截图文件清单。恢复工具会在替换目标前校验 SQLite integrity、外键、JSON 字段和迁移版本。
 
-仓库不再包含固定的 `config/` YAML；运行期间 settings、models、cameras、templates、rules、alerts 均以 `storage/machine.db` 为准。
+仓库不再包含固定的 `config/` YAML；运行期间 settings、模型注册信息、cameras、templates、rules、alerts 均以 `storage/machine.db` 为准；模型权重和数据集文件分别位于 `storage/models/`、`storage/datasets/`。
 
 ### 新机器 / 空数据库首次启动
 
-`storage/` 是本地运行数据，不会随 Git 仓库提交。因此把项目复制或克隆到另一台电脑后，首次启动可能只有一个空的 `storage/machine.db`。此时 `main.py` 会进入“等待模型配置”状态，不会再因为没有模型而退出：
+`storage/` 主要保存本地运行数据（数据库、快照、日志、数据集）；其中 `storage/models/` 保留可随仓库分发的基础模型。把项目复制或克隆到另一台电脑后，首次启动可能只有一个空的 `storage/machine.db`。此时 `main.py` 会进入“等待模型配置”状态，不会再因为没有模型而退出：
 
 1. 运行 `python main.py`；
 2. 打开 `http://localhost:8000/app/models`；
-3. 上传或选择 `models/` 下的 `.pt` 文件，注册并启用；
+3. 上传或选择 `storage/models/` 下的 `.pt` 文件，注册并启用；
 4. 回到「规则配置」绑定模型，再配置摄像头。
 
 也可以先运行独立面板 `python -m webapp.server` 完成模型注册，之后再启动 `python main.py`。如果要迁移已有配置，请使用备份工具恢复 `machine.db`，并同时恢复模型文件；不要直接把另一台电脑的绝对路径原样写入数据库。
@@ -118,7 +118,7 @@ application/      ConfigManager / ConfigSnapshot 运行时配置边界
 core/             取流 / 检测 / 分析 / 快照
 rules/            规则数据模型与判定逻辑常量
 infrastructure/   machine.db、Repository、告警持久化
-storage/          运行数据：machine.db / snapshots/ / backups/
+storage/          运行数据：machine.db / models/ / datasets/ / snapshots/ / backups/
 tools/            配置导出、备份和恢复工具
 webapp/           面板（FastAPI + React SPA，构建产物在 webapp/spa/dist）
 ```
@@ -136,4 +136,4 @@ python -m compileall application core infrastructure tools webapp
 cd webapp/spa && npm install && npm run build
 ```
 
-`storage/`、真实模型、截图、日志和包含凭据的本地配置不应提交 Git。
+除 `storage/models/` 中明确随仓库分发的基础权重外，`storage/` 下的运行数据（数据集、截图、日志、备份）和包含凭据的本地配置不应提交 Git。

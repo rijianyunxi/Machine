@@ -15,5 +15,12 @@ Thumbs.db
 *.yaml.bak
 
 # 运行数据与训练产物
-storage/
+storage/*
+# Keep shipped base model assets in the canonical runtime location.
+!storage/models/
+storage/models/*
+!storage/models/README.md
+!storage/models/yolov8n.pt
+!storage/models/yolov8-ppe.pt
+!storage/models/yolov8-smoking.pt
 runs/

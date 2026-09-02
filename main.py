@@ -28,6 +28,11 @@ from core.capture import CameraManager, CameraConfig
 from core.detector import DetectionError, MultiDetector
 from core.snapshot import SnapshotManager
 from infrastructure.persistence import AlertDatabase, ConfigRepository, MachineDatabase
+from infrastructure.storage_paths import (
+    canonical_model_reference,
+    ensure_storage_dirs,
+    migrate_legacy_runtime_dirs,
+)
 from application.config_manager import ConfigManager
 from utils.logger import setup_logger
 from rules.definitions import validate_rule_params
@@ -74,6 +79,8 @@ class MachineVisionSystem:
     """
 
     def __init__(self):
+        migrate_legacy_runtime_dirs()
+        ensure_storage_dirs()
         self._running = False
         self._shutdown = False
 
@@ -186,9 +193,11 @@ class MachineVisionSystem:
             current = getattr(detector, "_detectors", {}).get(name)
             confidence = item.get("confidence_override")
             if current is not None:
-                configured_path = (PROJECT_ROOT / path).resolve()
-                current_path = Path(str(getattr(current, "model_path", ""))).resolve()
-                same_path = configured_path == current_path
+                configured_ref = canonical_model_reference(path)
+                current_ref = canonical_model_reference(
+                    str(getattr(current, "model_path", ""))
+                )
+                same_path = configured_ref == current_ref
                 if same_path:
                     detector.set_thresholds(name, confidence=confidence)
                     continue

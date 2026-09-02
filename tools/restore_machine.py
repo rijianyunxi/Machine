@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from infrastructure.persistence import MachineDatabase
+from infrastructure.storage_paths import DATASETS_DIR, MODELS_DIR, STORAGE_DIR
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,13 +25,30 @@ def inside(root: Path, candidate: Path) -> bool:
         return False
 
 
+def restore_destination(project_root: Path, relative: Path) -> Path:
+    """Map backup-relative paths into storage, including legacy backups."""
+    parts = relative.parts
+    if not parts:
+        raise ValueError("空的备份相对路径")
+    roots = {
+        "models": project_root / "storage" / "models",
+        "datasets": project_root / "storage" / "datasets",
+        "snapshots": project_root / "storage" / "snapshots",
+    }
+    if parts[0] in roots:
+        return roots[parts[0]].joinpath(*parts[1:])
+    # Older backups could contain a project-relative path.  Only allow the
+    # known runtime folders and still place them under storage.
+    raise ValueError(f"不支持的备份路径: {relative}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Restore a machine backup")
     parser.add_argument("backup_dir")
     parser.add_argument("--database", default="storage/machine.db")
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument("--restore-files", action="store_true",
-                        help="also restore backed-up models and snapshots")
+                        help="also restore backed-up models, datasets and snapshots")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
@@ -51,15 +69,14 @@ def main() -> int:
     if args.restore_files:
         files_dir = backup_dir / "files"
         for entry in manifest.get("files", []):
-            relative = Path(entry.get("relative_path", ""))
-            if not relative or relative.is_absolute() or ".." in relative.parts:
+            relative = Path(str(entry.get("relative_path", "")))
+            if (not relative or relative.is_absolute() or ".." in relative.parts
+                    or relative.parts[0] not in {"models", "datasets", "snapshots"}):
                 raise ValueError(f"非法备份相对路径: {relative}")
             source = files_dir / relative
             if not source.is_file():
                 continue
-            destination = (project_root / "storage" / "snapshots" / Path(*relative.parts[1:])
-                          if relative.parts and relative.parts[0] == "snapshots"
-                          else project_root / relative)
+            destination = restore_destination(project_root, relative)
             if not inside(project_root, destination):
                 raise ValueError(f"拒绝恢复到项目目录之外: {destination}")
             destination.parent.mkdir(parents=True, exist_ok=True)

@@ -22,6 +22,13 @@ from urllib.parse import quote
 
 from application.config_manager import ConfigManager
 from infrastructure.persistence import AlertDatabase, ConfigRepository, MachineDatabase
+from infrastructure.storage_paths import (
+    MODELS_DIR,
+    canonical_model_reference,
+    ensure_storage_dirs,
+    migrate_legacy_runtime_dirs,
+    resolve_model_path,
+)
 from utils.logger import get_logger
 from utils.passwords import hash_password, is_password_hash
 
@@ -120,6 +127,8 @@ class RuntimeState:
     def __init__(self, system=None):
         self.system = system  # MachineVisionSystem when embedded, else None
         self._logger = get_logger("panel.state")
+        migrate_legacy_runtime_dirs()
+        ensure_storage_dirs()
 
         # Embedded mode reuses the main process ConfigManager/database.
         # Standalone mode opens the same fixed machine.db.
@@ -591,16 +600,14 @@ class RuntimeState:
     # ------------------------------------------------------------------
 
     def _models_dir(self) -> Path:
-        d = PROJECT_ROOT / "models"
-        d.mkdir(exist_ok=True)
-        return d
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        return MODELS_DIR
 
     def _model_path(self, name: str, rel_path: str):
-        """Resolve a configured model path. Returns (absolute_or_None, display)."""
-        cand = Path(rel_path)
-        if not cand.is_absolute():
-            cand = PROJECT_ROOT / rel_path
-        return (cand if cand.exists() else None), str(rel_path)
+        """Resolve a model path with compatibility for legacy DB references."""
+        resolved = resolve_model_path(rel_path)
+        display = canonical_model_reference(rel_path)
+        return (resolved if resolved.is_file() else None), display
 
     def models_status(self) -> list:
         """Registered model instances with runtime status."""
@@ -657,12 +664,12 @@ class RuntimeState:
         return dict(entry or {"name": name})
 
     def model_files(self) -> list:
-        """*.pt files under models/ + registration/validation state."""
-        registered = {m.get("path"): m.get("name")
+        """Return .pt files under storage/models plus registration state."""
+        registered = {canonical_model_reference(m.get("path", "")): m.get("name")
                       for m in self.settings().get("model", {}).get("models", [])}
         files = []
         for f in sorted(self._models_dir().glob("*.pt")):
-            rel = f"models/{f.name}"
+            rel = canonical_model_reference(f.name)
             val = self._model_validations.get(f.name, {})
             files.append({
                 "file": f.name,
@@ -690,8 +697,8 @@ class RuntimeState:
 
     def validate_model(self, filename: str):
         """Validate a .pt in a background thread (load + extract class table)."""
-        path = self._models_dir() / filename
-        if not path.exists():
+        path = resolve_model_path(filename)
+        if not path.is_file():
             raise ValueError("文件不存在")
         if filename in self._validating:
             return
@@ -718,7 +725,7 @@ class RuntimeState:
                     "imgsz": imgsz,
                 }
                 for registered in self.config_manager.repository.get_models():
-                    if registered.get("path") == f"models/{filename}":
+                    if canonical_model_reference(registered.get("path", "")) == canonical_model_reference(filename):
                         self.config_manager.repository.update_model_metadata(
                             registered["name"], classes=classes,
                             validation_status="valid", validation_error=None,
@@ -728,7 +735,7 @@ class RuntimeState:
             except Exception as e:
                 self._model_validations[filename] = {"status": "无效", "error": str(e)}
                 for registered in self.config_manager.repository.get_models():
-                    if registered.get("path") == f"models/{filename}":
+                    if canonical_model_reference(registered.get("path", "")) == canonical_model_reference(filename):
                         self.config_manager.repository.update_model_metadata(
                             registered["name"], validation_status="invalid",
                             validation_error=str(e),
@@ -743,10 +750,11 @@ class RuntimeState:
     def delete_model_file(self, filename: str):
         registered = {m.get("path") for m in
                       self.settings().get("model", {}).get("models", [])}
-        if f"models/{filename}" in registered:
+        if any(canonical_model_reference(path) == canonical_model_reference(filename)
+               for path in registered):
             raise ValueError("该文件已被注册的模型引用，请先注销模型")
-        path = self._models_dir() / filename
-        if path.exists():
+        path = resolve_model_path(filename)
+        if path.is_file():
             path.unlink()
         self._model_validations.pop(filename, None)
 
@@ -757,7 +765,11 @@ class RuntimeState:
                        confidence_override=None, expected_revision: int | None = None):
         if not re.fullmatch(r"[\w\-]+", name or ""):
             raise ValueError("模型名称只能使用字母/数字/下划线/连字符")
-        entry = {"name": name, "path": f"models/{file}", "enabled": bool(enabled)}
+        path, _display = self._model_path(name, file)
+        if path is None:
+            raise ValueError(f"模型文件不存在: {file}")
+        entry = {"name": name, "path": canonical_model_reference(file),
+                 "enabled": bool(enabled)}
         cached = self._model_validations.get(file) or {}
         if cached.get("status") == "有效" and isinstance(cached.get("classes"), dict):
             entry["classes"] = dict(cached["classes"])
