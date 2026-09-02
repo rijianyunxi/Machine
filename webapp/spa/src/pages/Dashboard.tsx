@@ -15,9 +15,31 @@ function fmtUptime(s: number | null | undefined) {
   return h ? `${h}h ${m}m` : `${m}m`;
 }
 
+function toLocalDate(ts?: number) {
+  if (ts == null || !Number.isFinite(ts)) return null;
+  const date = new Date(ts * 1000);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
 function tsToTime(ts?: number) {
-  return ts
-    ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false })
+  const date = toLocalDate(ts);
+  if (!date) return "-";
+  return [
+    date.getFullYear(),
+    pad2(date.getMonth() + 1),
+    pad2(date.getDate()),
+  ].join("-") +
+    ` ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function tsToClock(ts?: number) {
+  const date = toLocalDate(ts);
+  return date
+    ? `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
     : "-";
 }
 
@@ -223,7 +245,7 @@ export default function DashboardPage() {
                   }
                   title={tsToTime(a.timestamp)}
                 >
-                  <span className="t">{tsToTime(a.timestamp).slice(11)}</span>
+                  <span className="t">{tsToClock(a.timestamp)}</span>
                   <b>{a.camera_id}</b>
                   <Chip text={"R" + String(a.rule_id).padStart(2, "0")} color="blue" />
                   <span>{a.rule_name}</span>
