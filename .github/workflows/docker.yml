@@ -8,6 +8,15 @@ on:
       - "v*"
   pull_request:
   workflow_dispatch:
+    inputs:
+      torch_variant:
+        description: "PyTorch variant to build"
+        required: true
+        default: cpu
+        type: choice
+        options:
+          - cpu
+          - gpu
 
 permissions:
   contents: read
@@ -45,7 +54,9 @@ jobs:
             type=sha
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=cpu,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.torch_variant == 'cpu' }}
+            type=raw,value=gpu,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.torch_variant == 'gpu' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || github.event.inputs.torch_variant == 'cpu') }}
 
       - name: Build and push image
         uses: docker/build-push-action@v7
@@ -55,5 +66,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TORCH_VARIANT=${{ github.event.inputs.torch_variant || 'cpu' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -3,11 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        TORCH_VARIANT: ${TORCH_VARIANT:-cpu}
+        TORCH_VERSION: ${TORCH_VERSION:-2.8.0}
+        TORCHVISION_VERSION: ${TORCHVISION_VERSION:-0.23.0}
     image: machine:local
     ports:
       - "${MACHINE_PORT:-8000}:8000"
     volumes:
-      - machine-storage:/app/storage
+      - ./storage:/app/storage
     restart: unless-stopped
     environment:
       PYTHONUNBUFFERED: "1"

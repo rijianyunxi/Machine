@@ -33,8 +33,36 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.txt
+
+# Keep the PyTorch pair explicit: an unconstrained torchvision dependency can
+# resolve to a CUDA-enabled torch wheel on Linux and add several gigabytes.
+ARG TORCH_VARIANT=cpu
+ARG TORCH_VERSION=2.8.0
+ARG TORCHVISION_VERSION=0.23.0
+RUN set -eux; \
+    python -m pip install --upgrade pip; \
+    case "${TORCH_VARIANT}" in \
+        cpu) \
+            python -m pip install --no-cache-dir \
+                --index-url https://pypi.org/simple \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                "torch==${TORCH_VERSION}+cpu" \
+                "torchvision==${TORCHVISION_VERSION}+cpu" \
+            ;; \
+        gpu) \
+            python -m pip install --no-cache-dir \
+                --index-url https://pypi.org/simple \
+                "torch==${TORCH_VERSION}" \
+                "torchvision==${TORCHVISION_VERSION}" \
+            ;; \
+        *) \
+            echo "TORCH_VARIANT must be cpu or gpu, got: ${TORCH_VARIANT}" >&2; \
+            exit 1 \
+            ;; \
+    esac; \
+    python -m pip install --no-cache-dir \
+        --upgrade-strategy only-if-needed \
+        -r requirements.txt
 
 # Copy the application source. Runtime data is persisted through /app/storage.
 COPY . .
