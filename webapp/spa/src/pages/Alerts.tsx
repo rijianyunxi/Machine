@@ -19,6 +19,22 @@ function relTime(ts: number) {
   return Math.floor(diff / 86400) + " 天前";
 }
 
+function pathToSnapshotUrl(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const marker = "storage/snapshots/";
+  const markerIndex = normalized.toLowerCase().lastIndexOf(marker);
+  const relative =
+    markerIndex >= 0
+      ? normalized.slice(markerIndex + marker.length)
+      : normalized.replace(/^\/+/, "");
+
+  return "/snapshots/" + relative.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+function snapshotUrl(alert: AlertItem): string | null {
+  return alert.snapshot_url || (alert.snapshot_path ? pathToSnapshotUrl(alert.snapshot_path) : null);
+}
+
 const LIMIT = 50;
 
 export default function AlertsPage() {
@@ -89,9 +105,6 @@ export default function AlertsPage() {
       toast((e as Error).message, false);
     }
   });
-
-  const snapUrl = (path: string) =>
-    "/snapshots/" + path.replace(/^storage[\\/]snapshots[\\/]/, "");
 
   return (
     <Page
@@ -188,13 +201,13 @@ export default function AlertsPage() {
                     </td>
                     <td className="mono">{a.confidence?.toFixed(2)}</td>
                     <td>
-                      {a.snapshot_status === "available" && a.snapshot_path ? (
+                      {a.snapshot_status === "available" && snapshotUrl(a) ? (
                         <a
-                          href={snapUrl(a.snapshot_path)}
+                          href={snapshotUrl(a)!}
                           onClick={(e) => {
                             e.preventDefault();
                             showImage(
-                              snapUrl(a.snapshot_path!),
+                              snapshotUrl(a)!,
                               `${a.camera_name || a.camera_id} · ${a.rule_name}`,
                             );
                           }}

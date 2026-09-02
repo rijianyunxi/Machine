@@ -133,6 +133,7 @@ export interface AlertItem {
   status: AlertStatus;
   timestamp: number;
   snapshot_path?: string | null;
+  snapshot_url?: string | null;
   snapshot_status?: SnapshotStatus;
   note?: string | null;
 }

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from webapp.api.common import abort_on_value_error, get_state
+from webapp.snapshot_urls import snapshot_url
 
 router = APIRouter()
 
@@ -32,11 +33,18 @@ def list_alerts(
         from_ts = to_ts - days * 86400
     if status and status not in ALERT_STATUSES:
         raise HTTPException(400, f"status 需为 {ALERT_STATUSES}")
-    return abort_on_value_error(
+    result = abort_on_value_error(
         lambda: state.db.get_alerts(camera=camera, rule_id=rule, status=status,
                                     from_ts=from_ts, to_ts=to_ts,
                                     limit=limit, offset=offset)
     )
+    for item in result.get("items", []):
+        item["snapshot_url"] = (
+            snapshot_url(state, item.get("snapshot_path"))
+            if item.get("snapshot_status") == "available"
+            else None
+        )
+    return result
 
 
 @router.get("/api/alerts/summary")
