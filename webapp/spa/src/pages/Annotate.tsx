@@ -20,10 +20,13 @@ interface Box {
   _aiChecked?: boolean;
 }
 
+type DatasetSplit = "train" | "val" | "test";
+
 interface ImageItem {
   file: string;
   stem: string;
-  labeled: number;
+  split: DatasetSplit;
+  labeled: boolean;
 }
 
 const clsColor = (i: number) => `hsl(${Math.round((i * 137.508) % 360)}, 68%, 58%)`;
@@ -53,8 +56,10 @@ export default function AnnotatePage() {
   const { busy, wrap } = useBusy();
 
   const img = idx >= 0 && idx < images.length ? images[idx] : null;
-  const imgUrl = (im: { file: string }) =>
-    `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(im.file)}`;
+  const imgUrl = (im: Pick<ImageItem, "file" | "split">) =>
+    `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(im.file)}?split=${encodeURIComponent(im.split)}`;
+  const labelsUrl = (im: Pick<ImageItem, "stem" | "split">) =>
+    `/api/datasets/${encodeURIComponent(ds)}/labels/${encodeURIComponent(im.stem)}?split=${encodeURIComponent(im.split)}`;
 
   const markDirty = () => {
     dirtyRef.current = true;
@@ -75,12 +80,16 @@ export default function AnnotatePage() {
       if (!im || !dirtyRef.current) return;
       const manual = boxes.filter((b) => !b._ai); // AI 建议框不保存
       await api(
-        `/api/datasets/${encodeURIComponent(ds)}/labels/${encodeURIComponent(im.stem)}`,
+        labelsUrl(im),
         { method: "PUT", body: { boxes: manual } },
       );
       dirtyRef.current = false;
       setImages((list) =>
-        list.map((x) => (x.stem === im.stem ? { ...x, labeled: manual.length > 0 ? 1 : 0 } : x)),
+        list.map((x) =>
+          x.stem === im.stem && x.split === im.split
+            ? { ...x, labeled: manual.length > 0 }
+            : x,
+        ),
       );
       if (!silent) toast(`已保存 ${manual.length} 个框`);
     },
@@ -97,7 +106,7 @@ export default function AnnotatePage() {
       setSel(-1);
       const im = images[next];
       const data = await api<{ boxes: Box[] }>(
-        `/api/datasets/${encodeURIComponent(ds)}/labels/${encodeURIComponent(im.stem)}`,
+        labelsUrl(im),
       );
       setBoxes(data.boxes || []);
       dirtyRef.current = false;
@@ -126,7 +135,7 @@ export default function AnnotatePage() {
       if (r.images.length) {
         setIdx(0);
         const data = await api<{ boxes: Box[] }>(
-          `/api/datasets/${encodeURIComponent(name)}/labels/${encodeURIComponent(r.images[0].stem)}`,
+          `/api/datasets/${encodeURIComponent(name)}/labels/${encodeURIComponent(r.images[0].stem)}?split=${encodeURIComponent(r.images[0].split)}`,
         );
         setBoxes(data.boxes || []);
         dirtyRef.current = false;
@@ -367,7 +376,7 @@ export default function AnnotatePage() {
       "，x/y 为框中心点、w/h 为框宽高，均按图片尺寸归一化到 0~1。图中没有这些类别目标时输出 []。";
   }, [classes]);
 
-  const imgSize = (im: { file: string }) =>
+  const imgSize = (im: Pick<ImageItem, "file" | "split">) =>
     new Promise<{ w: number; h: number }>((resolve) => {
       const i = new Image();
       i.onload = () => resolve({ w: i.naturalWidth, h: i.naturalHeight });
@@ -411,7 +420,7 @@ export default function AnnotatePage() {
         return;
       }
       await api(
-        `/api/datasets/${encodeURIComponent(ds)}/labels/${encodeURIComponent(im.stem)}`,
+        labelsUrl(im),
         { method: "PUT", body: { boxes: newBoxes } },
       );
       setBoxes(newBoxes);
@@ -523,7 +532,7 @@ export default function AnnotatePage() {
           <div className="snap-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {images.length ? (
               images.map((im, i) => (
-                <figure key={im.file} style={{ margin: 0, cursor: "pointer" }} onClick={() => jump(i)}>
+                <figure key={`${im.split}:${im.file}`} style={{ margin: 0, cursor: "pointer" }} onClick={() => jump(i)}>
                   <img
                     src={imgUrl(im)}
                     loading="lazy"

@@ -366,7 +366,9 @@ select { cursor: pointer; }
   overflow-y: auto; padding: 48px 20px;
 }
 .modal-mask.open { display: flex; animation: fadeIn 0.15s ease; }
-.modal-mask.modal-mask-tall { align-items: center; overflow: hidden; }
+.modal-mask.modal-mask-tall {
+  align-items: flex-start; overflow: hidden; padding-top: 32px; padding-bottom: 32px;
+}
 .modal {
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
@@ -916,10 +918,13 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
 
 /* 高内容弹窗：限高 + 内容区内部滚动 + 底部操作栏常驻 */
 .modal.modal-tall {
-  max-height: calc(100vh - 96px);
-  display: flex; flex-direction: column;
+  max-height: calc(100vh - 64px);
+  display: flex; flex-direction: column; overflow-anchor: none;
 }
-.modal.modal-tall .modal-b { flex: 1; min-height: 0; overflow-y: auto; }
+.modal.modal-tall .modal-b {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none;
+  overscroll-behavior: contain;
+}
 .modal.modal-tall .modal-f { flex-shrink: 0; }
 
 /* ============ 可视化规则画布（GraphEditor） ============ */

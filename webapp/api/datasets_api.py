@@ -1,6 +1,6 @@
 """Dataset management + online annotation API."""
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from webapp.api.common import get_state
@@ -87,34 +87,41 @@ def list_images(request: Request, name: str, limit: int = 1000):
 @router.delete("/api/datasets/{name}/images")
 def delete_images(request: Request, name: str, data: dict):
     try:
-        n = get_state(request).datasets.delete_images(
-            name, data.get("filenames", []))
+        # New clients send split-aware image refs; keep old filenames payloads
+        # working for callers that predate datasets with duplicate filenames.
+        images = data.get("images", data.get("filenames", []))
+        n = get_state(request).datasets.delete_images(name, images)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"deleted": n}
 
 
 @router.get("/api/datasets/{name}/image/{filename}")
-def get_image(request: Request, name: str, filename: str):
+def get_image(request: Request, name: str, filename: str,
+             split: str = Query(None)):
     try:
-        return FileResponse(get_state(request).datasets.image_path(name, filename))
+        return FileResponse(
+            get_state(request).datasets.image_path(name, filename, split=split))
     except ValueError as e:
         raise HTTPException(404, str(e))
 
 
 @router.get("/api/datasets/{name}/labels/{stem}")
-def get_labels(request: Request, name: str, stem: str):
+def get_labels(request: Request, name: str, stem: str,
+               split: str = Query(None)):
     try:
-        return {"boxes": get_state(request).datasets.get_labels(name, stem)}
+        return {"boxes": get_state(request).datasets.get_labels(
+            name, stem, split=split)}
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @router.put("/api/datasets/{name}/labels/{stem}")
-def save_labels(request: Request, name: str, stem: str, data: dict):
+def save_labels(request: Request, name: str, stem: str, data: dict,
+                split: str = Query(None)):
     try:
-        n = get_state(request).datasets.save_labels(name, stem,
-                                                    data.get("boxes", []))
+        n = get_state(request).datasets.save_labels(
+            name, stem, data.get("boxes", []), split=split)
         return {"saved": n}
     except ValueError as e:
         raise HTTPException(400, str(e))

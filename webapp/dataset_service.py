@@ -211,11 +211,30 @@ class DatasetService:
                 "splits": stats["splits"]}
 
     def set_classes(self, name: str, classes: list):
-        doc = self._load_yaml(name)
+        self._load_yaml(name)
         clean = [c.strip() for c in classes if c and c.strip()]
         if not clean:
             raise DatasetError("至少需要一个类别")
-        # Label class ids are not remapped automatically; append/rename safely.
+        # Label class ids are not remapped automatically. Refuse a shrink that
+        # would make existing annotations point at nonexistent classes.
+        for _split, _images_dir, labels_dir in self._split_specs(name):
+            if not labels_dir.exists():
+                continue
+            for label_file in labels_dir.glob("*.txt"):
+                for line_no, line in enumerate(
+                    label_file.read_text(encoding="utf-8").splitlines(), 1
+                ):
+                    parts = line.split()
+                    if not parts:
+                        continue
+                    try:
+                        cls = int(float(parts[0]))
+                    except ValueError:
+                        continue
+                    if cls < 0 or cls >= len(clean):
+                        raise DatasetError(
+                            f"无法减少类别：{label_file.name} 第 {line_no} 行使用了类别 {cls}"
+                        )
         self._write_yaml(name, clean)
 
     # ---------- images ----------
@@ -291,38 +310,60 @@ class DatasetService:
                             "labeled": lp.exists(), "boxes": n})
         return out
 
-    def _locate_image(self, name: str, filename: str) -> tuple[str, Path, Path]:
+    @staticmethod
+    def _check_split(split: str | None) -> str | None:
+        if split is not None and split not in SPLIT_KEYS:
+            raise DatasetError("非法 split")
+        return split
+
+    def _locate_image(self, name: str, filename: str,
+                      split: str | None = None) -> tuple[str, Path, Path]:
         if not SAFE_FILE.match(str(filename or "")):
             raise DatasetError("非法文件名")
-        for split, images_dir, labels_dir in self._split_specs(name):
+        split = self._check_split(split)
+        for current_split, images_dir, labels_dir in self._split_specs(name):
+            if split is not None and current_split != split:
+                continue
             p = images_dir / filename
-            if p.exists() and p.suffix.lower() in IMG_EXTS:
-                return split, p, labels_dir / (p.stem + ".txt")
+            if p.exists() and p.is_file() and p.suffix.lower() in IMG_EXTS:
+                return current_split, p, labels_dir / (p.stem + ".txt")
         raise DatasetError("图片不存在")
 
-    def _label_path_for_stem(self, name: str, stem: str) -> Path:
+    def _label_path_for_stem(self, name: str, stem: str,
+                             split: str | None = None) -> Path:
         if not SAFE_FILE.match(stem or ""):
             raise DatasetError("非法文件名")
-        for _, images_dir, labels_dir in self._split_specs(name):
+        split = self._check_split(split)
+        for current_split, images_dir, labels_dir in self._split_specs(name):
+            if split is not None and current_split != split:
+                continue
             if not images_dir.exists():
                 continue
             for f in images_dir.iterdir():
-                if f.stem == stem and f.suffix.lower() in IMG_EXTS:
+                if f.is_file() and f.stem == stem and f.suffix.lower() in IMG_EXTS:
                     return labels_dir / (stem + ".txt")
         raise DatasetError("图片不存在")
 
-    def image_path(self, name: str, filename: str) -> Path:
-        _, p, _ = self._locate_image(name, filename)
+    def image_path(self, name: str, filename: str,
+                   split: str | None = None) -> Path:
+        _, p, _ = self._locate_image(name, filename, split=split)
         return p
 
-    def delete_images(self, name: str, filenames: list) -> int:
-        """Delete images and their label files; returns removed count."""
+    def delete_images(self, name: str, images: list) -> int:
+        """Delete images and labels, accepting split-aware refs and old filenames."""
         if self._prelabel_job["running"]:
             raise DatasetError("AI 预标注进行中，请稍后再管理图片")
         n = 0
-        for fn in filenames:
+        for item in images or []:
+            if isinstance(item, dict):
+                filename = item.get("file", item.get("filename"))
+                split = item.get("split")
+            else:
+                filename, split = item, None
+            if not isinstance(filename, str):
+                continue
             try:
-                _, p, lp = self._locate_image(name, fn)
+                _, p, lp = self._locate_image(name, filename, split=split)
             except DatasetError:
                 continue
             p.unlink()
@@ -333,8 +374,9 @@ class DatasetService:
 
     # ---------- labels (YOLO txt) ----------
 
-    def get_labels(self, name: str, stem: str) -> list:
-        lp = self._label_path_for_stem(name, stem)
+    def get_labels(self, name: str, stem: str,
+                   split: str | None = None) -> list:
+        lp = self._label_path_for_stem(name, stem, split=split)
         boxes = []
         if lp.exists():
             for line in lp.read_text().splitlines():
@@ -349,8 +391,10 @@ class DatasetService:
                     continue
         return boxes
 
-    def save_labels(self, name: str, stem: str, boxes: list) -> int:
-        lp = self._label_path_for_stem(name, stem)
+    def save_labels(self, name: str, stem: str, boxes: list,
+                    split: str | None = None) -> int:
+        lp = self._label_path_for_stem(name, stem, split=split)
+        class_count = len(self._names(self._load_yaml(name)))
         lines = []
         for b in boxes:
             try:
@@ -358,6 +402,8 @@ class DatasetService:
                 x, y, w, h = (float(b["x"]), float(b["y"]),
                               float(b["w"]), float(b["h"]))
             except (KeyError, TypeError, ValueError):
+                continue
+            if not (0 <= cls < class_count):
                 continue
             if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
                 continue
@@ -399,7 +445,7 @@ class DatasetService:
                     for info in targets:
                         if not self._prelabel_job["running"]:
                             break
-                        p = self.image_path(name, info["file"])
+                        p = self.image_path(name, info["file"], split=info["split"])
                         import cv2
 
                         img = cv2.imread(str(p))
@@ -407,7 +453,8 @@ class DatasetService:
                             continue
                         dets = detector.detect_all(img, model_names=[model] if model else None)
                         boxes = self._dets_to_yolo(dets, img.shape)
-                        self.save_labels(name, info["stem"], boxes)
+                        self.save_labels(name, info["stem"], boxes,
+                                          split=info["split"])
                         self._prelabel_job["done"] += 1
                 finally:
                     cfg = {m["name"]: m for m in

@@ -71,7 +71,10 @@ export default function SnapshotsPage() {
   });
 
   const cleanup = wrap("cleanup", async () => {
-    const d = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    // Use the browser's local calendar date; toISOString() would shift this
+    // date around midnight for users outside UTC.
+    const d0 = new Date(Date.now() - 30 * 86400000);
+    const d = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, "0")}-${String(d0.getDate()).padStart(2, "0")}`;
     if (!(await confirm(`删除 ${d} 之前的所有快照目录？此操作不可恢复。`))) return;
     try {
       const r = await api<{ deleted_dirs: number }>("/api/snapshots/cleanup", {

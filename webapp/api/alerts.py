@@ -93,10 +93,20 @@ def snapshot_thumb(request: Request, p: str = Query(...),
     state = get_state(request)
     base = state.snapshots_dir().resolve()
     src = (base / p).resolve()
-    if not str(src).startswith(str(base)) or src.suffix.lower() != ".jpg" \
-            or not src.is_file():
+    try:
+        relative = src.relative_to(base)
+    except ValueError:
+        # ``str.startswith`` is not a directory-boundary check: a sibling
+        # such as ``snapshots_evil`` must not be treated as a child of base.
         raise HTTPException(404, "快照不存在")
-    cache = base / ".thumbs" / f"w{w}" / p
+    if src.suffix.lower() != ".jpg" or not src.is_file():
+        raise HTTPException(404, "快照不存在")
+    cache_root = (base / ".thumbs" / f"w{w}").resolve()
+    cache = (cache_root / relative).resolve()
+    try:
+        cache.relative_to(cache_root)
+    except ValueError:
+        raise HTTPException(404, "快照不存在")
     cache.parent.mkdir(parents=True, exist_ok=True)
     if not cache.is_file():
         img = cv2.imread(str(src))

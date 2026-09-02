@@ -25,8 +25,11 @@ interface ImgInfo {
   boxes: number;
 }
 
-const imgUrl = (ds: string, file: string) =>
-  `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(file)}`;
+const imageKey = (im: Pick<ImgInfo, "file" | "split">) =>
+  `${im.split}:${im.file}`;
+
+const imgUrl = (ds: string, file: string, split: DatasetSplit) =>
+  `/api/datasets/${encodeURIComponent(ds)}/image/${encodeURIComponent(file)}?split=${encodeURIComponent(split)}`;
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
@@ -187,35 +190,36 @@ export default function DatasetsPage() {
     }
   };
 
-  const toggleSel = (file: string) => {
+  const toggleSel = (im: ImgInfo) => {
+    const key = imageKey(im);
     setSel((s) => {
       const n = new Set(s);
-      if (n.has(file)) n.delete(file);
-      else n.add(file);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
       return n;
     });
   };
 
-  const delImages = async (files: string[]) => {
-    if (!mgr || !files.length) return;
+  const delImages = async (images: ImgInfo[]) => {
+    if (!mgr || !images.length) return;
     if (
       !(await confirm(
-        files.length === 1
-          ? `删除图片 ${files[0]}？其标注将一并删除，不可恢复！`
-          : `删除选中的 ${files.length} 张图片？标注将一并删除，不可恢复！`,
+        images.length === 1
+          ? `删除图片 ${images[0].file}？其标注将一并删除，不可恢复！`
+          : `删除选中的 ${images.length} 张图片？标注将一并删除，不可恢复！`,
       ))
     )
       return;
     try {
       const r = await api<{ deleted: number }>(
         `/api/datasets/${encodeURIComponent(mgr.name)}/images`,
-        { method: "DELETE", body: { filenames: files } },
+        { method: "DELETE", body: { images } },
       );
       toast(`已删除 ${r.deleted} 张`);
-      const gone = new Set(files);
-      setSel((s) => new Set([...s].filter((f) => !gone.has(f))));
+      const gone = new Set(images.map(imageKey));
+      setSel((s) => new Set([...s].filter((key) => !gone.has(key))));
       setMgr((m) =>
-        m ? { ...m, images: m.images.filter((i) => !gone.has(i.file)) } : m,
+        m ? { ...m, images: m.images.filter((i) => !gone.has(imageKey(i))) } : m,
       );
       refresh();
     } catch (e) {
@@ -558,7 +562,7 @@ export default function DatasetsPage() {
               <button
                 className="danger"
                 disabled={!sel.size}
-                onClick={() => delImages([...sel])}
+                onClick={() => delImages(mgr.images.filter((im) => sel.has(imageKey(im))))}
               >
                 删除选中{sel.size ? `（${sel.size}）` : ""}
               </button>
@@ -577,7 +581,7 @@ export default function DatasetsPage() {
               <>
                 <button
                   className="mini ghost"
-                  onClick={() => setSel(new Set(mgr.images.map((i) => i.file)))}
+                  onClick={() => setSel(new Set(mgr.images.map(imageKey)))}
                 >
                   全选
                 </button>
@@ -595,27 +599,27 @@ export default function DatasetsPage() {
             <div className="img-mgr-grid">
               {mgr.images.map((im) => (
                 <figure
-                  key={im.file}
-                  className={"img-mgr" + (sel.has(im.file) ? " on" : "")}
+                  key={imageKey(im)}
+                  className={"img-mgr" + (sel.has(imageKey(im)) ? " on" : "")}
                 >
                   <input
                     className="pick"
                     type="checkbox"
                     title="选择"
-                    checked={sel.has(im.file)}
-                    onChange={() => toggleSel(im.file)}
+                    checked={sel.has(imageKey(im))}
+                    onChange={() => toggleSel(im)}
                   />
                   <img
-                    src={imgUrl(mgr.name, im.file)}
+                    src={imgUrl(mgr.name, im.file, im.split)}
                     alt={im.file}
                     loading="lazy"
                     onClick={() =>
                       lightbox.showGallery(
                         mgr.images.map((i) => ({
-                          src: imgUrl(mgr.name, i.file),
+                          src: imgUrl(mgr.name, i.file, i.split),
                           title: `${mgr.name}/${i.file}`,
                         })),
-                        mgr.images.findIndex((i) => i.file === im.file),
+                        mgr.images.findIndex((i) => imageKey(i) === imageKey(im)),
                       )
                     }
                   />
@@ -639,7 +643,7 @@ export default function DatasetsPage() {
                       className="mini danger"
                       style={{ padding: "1px 7px", fontSize: 11 }}
                       title="删除此图"
-                      onClick={() => delImages([im.file])}
+                      onClick={() => delImages([im])}
                     >
                       删
                     </button>
