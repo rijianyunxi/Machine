@@ -1252,19 +1252,47 @@ pre.log .muted-lb { color: #7a8aa0; font-family: var(--font); }
   border: 1px solid var(--border-strong);
   border-radius: 10px;
 }
-.dataset-split-picker button {
+.dataset-split-picker label {
+  position: relative;
   flex: 1;
   min-width: 0;
+  margin: 0;
   padding: 7px 9px;
-  background: transparent;
-  border: 0;
+  border-radius: 7px;
   color: var(--text-2);
   font-size: 12px;
   font-weight: 500;
-  border-radius: 7px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
-.dataset-split-picker button:hover { color: var(--text); filter: none; }
-.dataset-split-picker button.on { background: var(--accent-soft); color: var(--accent); }
+.dataset-split-picker label:hover { color: var(--text); }
+.dataset-split-picker label.on { background: var(--accent-soft); color: var(--accent); }
+.dataset-split-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.dataset-split-picker label:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.dataset-upload-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.dataset-upload-select .ghost { flex-shrink: 0; }
 .dataset-upload-summary {
   padding: 11px 12px;
   background: var(--surface-3);

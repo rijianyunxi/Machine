@@ -39,17 +39,18 @@ function SplitPicker({
   onChange: (value: DatasetSplit) => void;
 }) {
   return (
-    <div className="dataset-split-picker" role="group" aria-label="数据集分区">
+    <div className="dataset-split-picker" role="radiogroup" aria-label="数据集分区">
       {(Object.keys(SPLIT_LABELS) as DatasetSplit[]).map((split) => (
-        <button
-          key={split}
-          type="button"
-          className={value === split ? "on" : ""}
-          aria-pressed={value === split}
-          onClick={() => onChange(split)}
-        >
-          {SPLIT_LABELS[split]}
-        </button>
+        <label key={split} className={value === split ? "on" : ""}>
+          <input
+            type="radio"
+            name="dataset-split"
+            value={split}
+            checked={value === split}
+            onChange={() => onChange(split)}
+          />
+          <span>{SPLIT_LABELS[split]}</span>
+        </label>
       ))}
     </div>
   );
@@ -72,7 +73,7 @@ export default function DatasetsPage() {
     null,
   );
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
   const lightbox = useLightbox();
@@ -145,12 +146,24 @@ export default function DatasetsPage() {
     await refresh();
   };
 
+  const resetUpload = () => {
+    setUploadTarget(null);
+    setUploadFiles([]);
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
+  };
+
+  const openUpload = (name: string) => {
+    if (busy.upload) return;
+    setUploadTarget(name);
+    setUploadFiles([]);
+    setUploadSplit("train");
+  };
+
   const doUpload = wrap("upload", async () => {
     if (!uploadTarget || !uploadFiles.length) return;
     try {
       await uploadImages(uploadTarget, uploadFiles, uploadSplit);
-      setUploadTarget(null);
-      setUploadFiles([]);
+      resetUpload();
     } catch (e) {
       toast((e as Error).message || "导入失败", false);
     }
@@ -418,29 +431,10 @@ export default function DatasetsPage() {
                     </a>
                     <button
                       className="ghost dataset-action dataset-action--secondary"
-                      onClick={() => fileRefs.current[d.name]?.click()}
+                      onClick={() => openUpload(d.name)}
                     >
                       <Icon name="upload" size={14} /> 导入图片
                     </button>
-                    <input
-                      ref={(el) => {
-                        fileRefs.current[d.name] = el;
-                      }}
-                      className="dataset-card__file-input"
-                      type="file"
-                      multiple
-                      accept=".jpg,.jpeg,.png,.webp"
-                      aria-label={`向 ${d.name} 导入图片`}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (files.length) {
-                          setUploadTarget(d.name);
-                          setUploadFiles(files);
-                          setUploadSplit("train");
-                        }
-                        e.target.value = "";
-                      }}
-                    />
                   </div>
                   <div className="dataset-card__secondary-actions">
                     <button
@@ -527,28 +521,20 @@ export default function DatasetsPage() {
         </Modal>
       )}
 
-      {uploadTarget && uploadFiles.length > 0 && (
+      {uploadTarget && (
         <Modal
           title="导入图片"
           width={520}
           onClose={() => {
             if (busy.upload) return;
-            setUploadTarget(null);
-            setUploadFiles([]);
+            resetUpload();
           }}
           footer={
             <>
-              <button
-                className="ghost"
-                disabled={busy.upload}
-                onClick={() => {
-                  setUploadTarget(null);
-                  setUploadFiles([]);
-                }}
-              >
+              <button className="ghost" disabled={busy.upload} onClick={resetUpload}>
                 取消
               </button>
-              <button disabled={busy.upload} onClick={doUpload}>
+              <button disabled={busy.upload || !uploadFiles.length} onClick={doUpload}>
                 {busy.upload ? "导入中…" : "确认导入"}
               </button>
             </>
@@ -557,17 +543,43 @@ export default function DatasetsPage() {
           <p className="muted" style={{ marginBottom: 10 }}>
             导入到数据集：<strong style={{ color: "var(--text)" }}>{uploadTarget}</strong>
           </p>
-          <div className="dataset-upload-summary">
-            <strong>已选择 {uploadFiles.length} 张图片</strong>
-            <div className="dataset-upload-files">
-              {uploadFiles.slice(0, 8).map((file) => (
-                <span key={file.name + "-" + file.size + "-" + file.lastModified} title={file.name}>
-                  {file.name}
-                </span>
-              ))}
-              {uploadFiles.length > 8 ? <span className="muted">还有 {uploadFiles.length - 8} 张…</span> : null}
-            </div>
+          <div className="dataset-upload-select">
+            <input
+              ref={uploadInputRef}
+              className="dataset-card__file-input"
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.webp"
+              aria-label="选择要导入的图片"
+              onChange={(e) => {
+                setUploadFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={busy.upload}
+            >
+              <Icon name="upload" size={14} /> 选择图片
+            </button>
+            <span className={uploadFiles.length ? "" : "muted"}>
+              {uploadFiles.length ? `已选择 ${uploadFiles.length} 张图片` : "还没有选择图片"}
+            </span>
           </div>
+          {uploadFiles.length > 0 && (
+            <div className="dataset-upload-summary">
+              <div className="dataset-upload-files">
+                {uploadFiles.slice(0, 8).map((file) => (
+                  <span key={file.name + "-" + file.size + "-" + file.lastModified} title={file.name}>
+                    {file.name}
+                  </span>
+                ))}
+                {uploadFiles.length > 8 ? <span className="muted">还有 {uploadFiles.length - 8} 张…</span> : null}
+              </div>
+            </div>
+          )}
           <label>选择数据集分区</label>
           <SplitPicker value={uploadSplit} onChange={setUploadSplit} />
         </Modal>
