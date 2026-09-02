@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type {
@@ -682,7 +683,7 @@ export default function RulesPage() {
                 </div>
                 <div>
                   <label>严重度</label>
-                  <select
+                  <Select
                     style={{ width: "100%" }}
                     value={form.severity}
                     onChange={(e) => setFormPatch({ severity: e.target.value })}
@@ -691,7 +692,7 @@ export default function RulesPage() {
                     <option value="2">2 · 中</option>
                     <option value="3">3 · 高</option>
                     <option value="4">4 · 严重</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
               <div className="rule-name-desc">
@@ -715,7 +716,7 @@ export default function RulesPage() {
               !CONVERTIBLE_TEMPLATES[form.template] ? (
                 <>
                   <label>何时告警（判定逻辑）</label>
-                  <select
+                  <Select
                     style={{ width: "100%" }}
                     value={form.logic}
                     onChange={(e) => switchLogic(e.target.value)}
@@ -725,7 +726,7 @@ export default function RulesPage() {
                         {d.label} — {d.desc}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </>
               ) : null}
               <label

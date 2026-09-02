@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useEffect, useRef, useState } from "react";
 
 /* 区域画框编辑器（自 Rules 页抽出，供规则参数区与画布编辑器共用）：
@@ -75,7 +76,7 @@ export function ZoneRectEditor({
         <span className="muted" style={{ fontSize: 11.5 }}>
           参考画面
         </span>
-        <select
+        <Select
           style={{ minWidth: 140 }}
           value={camId}
           onChange={(e) => setCamId(e.target.value)}
@@ -89,7 +90,7 @@ export function ZoneRectEditor({
           ) : (
             <option value="">无可用监控</option>
           )}
-        </select>
+        </Select>
         <span className="muted" style={{ fontSize: 11.5, marginLeft: "auto" }}>
           在画面上拖拽框选区域，共 {value.length} 个
         </span>

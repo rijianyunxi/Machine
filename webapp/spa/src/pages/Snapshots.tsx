@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { RuleEntry, SnapshotDate, SnapshotFile, SnapshotPage } from "../api/types";
@@ -117,7 +118,7 @@ export default function SnapshotsPage() {
             value={draft.to}
             onChange={(e) => setDraft({ ...draft, to: e.target.value })}
           />
-          <select
+          <Select
             style={{ minWidth: 190 }}
             value={draft.rule}
             onChange={(e) => setDraft({ ...draft, rule: e.target.value })}
@@ -128,7 +129,7 @@ export default function SnapshotsPage() {
                 R{String(r.id).padStart(2, "0")} {r.name}
               </option>
             ))}
-          </select>
+          </Select>
           <button className="mini" onClick={() => apply(draft)}>
             查询
           </button>

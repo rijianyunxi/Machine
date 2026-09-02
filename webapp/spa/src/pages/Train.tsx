@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { DatasetInfo, ModelsResponse, TrainRun, TrainStatus } from "../api/types";
@@ -158,7 +159,7 @@ export default function TrainPage() {
         <div className="card">
           <div className="card-title">启动训练</div>
           <label>数据集（YOLO 格式，来自「数据集」页）</label>
-          <select
+          <Select
             style={{ width: "100%" }}
             value={form.dataset}
             onChange={(e) => setForm({ ...form, dataset: e.target.value })}
@@ -172,9 +173,9 @@ export default function TrainPage() {
             ) : (
               <option value="">无数据集，请先创建</option>
             )}
-          </select>
+          </Select>
           <label>基础模型（storage/models/ 目录下的 .pt，或官方名）</label>
-          <select
+          <Select
             style={{ width: "100%" }}
             value={form.base_model}
             onChange={(e) => setForm({ ...form, base_model: e.target.value })}
@@ -185,7 +186,7 @@ export default function TrainPage() {
               </option>
             ))}
             <option value="yolov8n.pt">yolov8n.pt（官方预训练）</option>
-          </select>
+          </Select>
           <div className="form-grid">
             <div>
               <label>轮数 epochs</label>
@@ -216,7 +217,7 @@ export default function TrainPage() {
             </div>
             <div>
               <label>设备 device</label>
-              <select
+              <Select
                 style={{ width: "100%" }}
                 value={form.device}
                 onChange={(e) => setForm({ ...form, device: e.target.value })}
@@ -225,7 +226,7 @@ export default function TrainPage() {
                 <option value="cpu">cpu</option>
                 <option value="mps">mps</option>
                 <option value="cuda:0">cuda:0</option>
-              </select>
+              </Select>
             </div>
           </div>
           <label>任务名（默认 数据集_epochs）</label>

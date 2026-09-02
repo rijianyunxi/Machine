@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { AlertItem, AlertStatus, Camera, RuleEntry } from "../api/types";
@@ -113,7 +114,7 @@ export default function AlertsPage() {
     >
       <div className="card">
         <div className="filter-bar">
-          <select
+          <Select
             style={{ minWidth: 150 }}
             value={fCam}
             onChange={(e) => setFCam(e.target.value)}
@@ -124,8 +125,8 @@ export default function AlertsPage() {
                 {c.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             style={{ minWidth: 170 }}
             value={fRule}
             onChange={(e) => setFRule(e.target.value)}
@@ -136,8 +137,8 @@ export default function AlertsPage() {
                 R{String(r.id).padStart(2, "0")} {r.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             style={{ minWidth: 130 }}
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value)}
@@ -147,8 +148,8 @@ export default function AlertsPage() {
             <option value="confirmed">确认违规</option>
             <option value="false_positive">误报</option>
             <option value="resolved">已处理</option>
-          </select>
-          <select
+          </Select>
+          <Select
             style={{ minWidth: 130 }}
             value={fDays}
             onChange={(e) => setFDays(e.target.value)}
@@ -157,7 +158,7 @@ export default function AlertsPage() {
             <option value="7">最近 7 天</option>
             <option value="30">最近 30 天</option>
             <option value="">全部时间</option>
-          </select>
+          </Select>
           <button className="mini" onClick={query}>
             查询
           </button>

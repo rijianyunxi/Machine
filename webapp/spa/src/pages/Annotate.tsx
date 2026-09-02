@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -559,7 +560,7 @@ export default function AnnotatePage() {
       subtitle="画框标注 · 快捷键 1-9 选类别 / Del 删除 / ←→ 切图（自动保存）/ Ctrl+S 保存"
       actions={
         <>
-          <select
+          <Select
             style={{ minWidth: 180 }}
             value={ds}
             onChange={(e) => switchDs(e.target.value)}
@@ -569,7 +570,7 @@ export default function AnnotatePage() {
                 {d.name}
               </option>
             ))}
-          </select>
+          </Select>
           <button className="ghost" disabled={busy.prelabel} onClick={aiPrelabel}>
             <Icon name="zap" size={13} /> YOLO 预标注
           </button>
@@ -587,7 +588,7 @@ export default function AnnotatePage() {
             <div className="card-title">
               图片 <span className="muted">{visibleImages.length}</span>
             </div>
-            <select
+            <Select
               aria-label="图片分区筛选"
               value={splitFilter}
               onChange={(e) => void changeSplitFilter(e.target.value as SplitFilter)}
@@ -596,7 +597,7 @@ export default function AnnotatePage() {
               <option value="train">{SPLIT_LABELS.train}</option>
               <option value="val">{SPLIT_LABELS.val}</option>
               <option value="test">{SPLIT_LABELS.test}</option>
-            </select>
+            </Select>
           </div>
           <div className="snap-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {visibleImages.length ? (

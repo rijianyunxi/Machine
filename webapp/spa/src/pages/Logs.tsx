@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Page } from "../layout/Page";
@@ -70,7 +71,7 @@ export default function LogsPage() {
     >
       <div className="card">
         <div className="toolbar" style={{ marginBottom: 14 }}>
-          <select
+          <Select
             style={{ minWidth: 130 }}
             value={level}
             onChange={(e) => setLevel(e.target.value)}
@@ -81,8 +82,8 @@ export default function LogsPage() {
             <option>WARNING</option>
             <option>ERROR</option>
             <option>CRITICAL</option>
-          </select>
-          <select
+          </Select>
+          <Select
             style={{ minWidth: 150 }}
             value={tail}
             onChange={(e) => setTail(e.target.value)}
@@ -90,7 +91,7 @@ export default function LogsPage() {
             <option value="500">最近 500 行</option>
             <option value="2000">最近 2000 行</option>
             <option value="5000">最近 5000 行</option>
-          </select>
+          </Select>
           <button className="mini" onClick={refresh}>
             刷新
           </button>

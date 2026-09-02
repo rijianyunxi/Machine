@@ -31,7 +31,7 @@ export function Modal({
     const box = boxRef.current;
     if (box) {
       const focusable = box.querySelector<HTMLElement>(
-        "input:not([type='hidden']), select, textarea, button, [tabindex]:not([tabindex='-1'])",
+        "input:not([type='hidden']), textarea, button, [tabindex]:not([tabindex='-1'])",
       );
       (focusable || box).focus();
     }

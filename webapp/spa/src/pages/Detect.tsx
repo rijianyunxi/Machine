@@ -1,3 +1,4 @@
+import { Select, type SelectHandle } from "../ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type {
@@ -22,7 +23,7 @@ export default function DetectPage() {
   const [imgName, setImgName] = useState("");
   const [imgTick, setImgTick] = useState(() => Date.now());
   const fileRef = useRef<HTMLInputElement>(null);
-  const camRef = useRef<HTMLSelectElement>(null);
+  const camRef = useRef<SelectHandle>(null);
   const toast = useToast();
   const { showImage } = useLightbox();
   const { busy, wrap } = useBusy();
@@ -125,7 +126,7 @@ export default function DetectPage() {
             </button>
           </div>
           <div className="toolbar" style={{ marginTop: 12 }}>
-            <select ref={camRef}>
+            <Select ref={camRef}>
               {cams.length ? (
                 cams.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -135,7 +136,7 @@ export default function DetectPage() {
               ) : (
                 <option value="">无可用监控</option>
               )}
-            </select>
+            </Select>
             <button className="ghost" disabled={busy.cam} onClick={runCamFrame}>
               用监控当前帧
             </button>

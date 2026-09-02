@@ -1,3 +1,4 @@
+import { Select } from "../ui/Select";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Camera, CameraTestResult, RuleEntry } from "../api/types";
@@ -461,13 +462,13 @@ export default function CamerasPage() {
 
           <div className="toolbar" style={{ marginTop: 14 }}>
             <label style={{ margin: 0, color: "var(--text)", fontSize: 12 }}>连接方式</label>
-            <select
+            <Select
               value={form.mode}
               onChange={(e) => switchMode(e.target.value as "build" | "raw")}
             >
               <option value="build">分段填写（自动组装）</option>
               <option value="raw">直接粘贴完整地址</option>
-            </select>
+            </Select>
           </div>
 
           {form.mode === "build" ? (
@@ -475,7 +476,7 @@ export default function CamerasPage() {
               <div className="form-grid" style={{ marginTop: 10 }}>
                 <div>
                   <label>品牌 / 地址格式</label>
-                  <select
+                  <Select
                     style={{ width: "100%" }}
                     value={form.vendor}
                     onChange={(e) => set({ vendor: e.target.value as CamForm["vendor"] })}
@@ -483,7 +484,7 @@ export default function CamerasPage() {
                     <option value="dahua">大华（/cam/realmonitor）</option>
                     <option value="hikvision">海康（/Streaming/Channels）</option>
                     <option value="generic">通用（自定义路径）</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
               <div className="form-grid" style={{ marginTop: 2 }}>
@@ -519,14 +520,14 @@ export default function CamerasPage() {
                 </div>
                 <div>
                   <label>码流</label>
-                  <select
+                  <Select
                     style={{ width: "100%" }}
                     value={form.stream}
                     onChange={(e) => set({ stream: e.target.value as "0" | "1" })}
                   >
                     <option value="1">子码流（检测推荐）</option>
                     <option value="0">主码流</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
               {form.vendor === "generic" ? (

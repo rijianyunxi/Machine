@@ -40,6 +40,7 @@ export const UI_ICONS: Record<string, string> = {
   "arrow-right": "<line x1='5' y1='12' x2='19' y2='12'/><polyline points='12 5 19 12 12 19'/>",
   "chevron-left": "<polyline points='15 18 9 12 15 6'/>",
   "chevron-right": "<polyline points='9 18 15 12 9 6'/>",
+  "chevron-down": "<polyline points='6 9 12 15 18 9'/>",
   play: "<polygon points='5 3 19 12 5 21 5 3'/>",
   stop: "<rect x='6' y='6' width='12' height='12' rx='1.5'/>",
   refresh:

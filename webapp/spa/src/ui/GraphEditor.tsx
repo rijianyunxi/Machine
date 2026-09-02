@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   GraphEdge,
@@ -767,7 +768,7 @@ export function GraphEditor({
               {isModelNode(selNode) ? (
                 <div className="field node-model-field">
                   <label>检测模型 <span className="required">必选</span></label>
-                  <select
+                  <Select
                     style={{ width: "100%" }}
                     value={selectedModel}
                     onChange={(e) => updateNodeModel(e.target.value)}
@@ -778,7 +779,7 @@ export function GraphEditor({
                         {model}{modelEnabled[model] === false ? "（已停用）" : ""}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   {modelsLoading ? (
                     <p className="field-hint">正在加载模型列表…</p>
                   ) : modelsLoadError ? (
