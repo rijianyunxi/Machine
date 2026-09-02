@@ -52,6 +52,28 @@ class SnapshotManager:
         # against this root and checked before a directory or file is created.
         self._save_root.mkdir(parents=True, exist_ok=True)
 
+    def apply_settings(self, settings: dict) -> None:
+        """Apply the committed snapshot settings to this live manager.
+
+        The main loop may learn about a settings change through the periodic
+        ConfigManager refresh (for example when a standalone panel process
+        writes machine.db).  Keep the writer in sync with that snapshot so a
+        long-running process cannot keep using an old annotate flag.
+        """
+        snap_cfg = settings or {}
+        if "annotate" in snap_cfg:
+            self._annotate = bool(snap_cfg["annotate"])
+        if "jpeg_quality" in snap_cfg:
+            self._jpeg_quality = int(snap_cfg["jpeg_quality"])
+        if "box_thickness" in snap_cfg:
+            self._box_thickness = int(snap_cfg["box_thickness"])
+        if "font_scale" in snap_cfg:
+            self._font_scale = float(snap_cfg["font_scale"])
+        if "save_dir" in snap_cfg and snap_cfg["save_dir"]:
+            self._save_dir = str(snap_cfg["save_dir"])
+            self._save_root = Path(self._save_dir).expanduser().resolve()
+            self._save_root.mkdir(parents=True, exist_ok=True)
+
     @staticmethod
     def _safe_component(value: object, fallback: str) -> str:
         """Return a single filesystem-safe path component.

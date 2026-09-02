@@ -14,6 +14,7 @@ Usage:
 """
 
 import copy
+import os
 import signal
 import sys
 import time
@@ -36,6 +37,44 @@ from infrastructure.storage_paths import (
 from application.config_manager import ConfigManager
 from utils.logger import setup_logger
 from rules.definitions import validate_rule_params
+
+
+_INSTANCE_LOCK_HANDLE = None
+
+
+def _acquire_instance_lock() -> None:
+    """Allow only one detector process to consume camera streams.
+
+    A second ``main.py`` used to start its processing loop even when its web
+    panel failed because port 8000 was already occupied.  That created two
+    detectors writing snapshots with different in-memory settings.  Keep an
+    OS-level lock for the lifetime of the real Python process instead.
+    """
+    global _INSTANCE_LOCK_HANDLE
+    lock_path = PROJECT_ROOT / "storage" / ".machine_vision.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    try:
+        # msvcrt.locking locks bytes, so ensure the file contains one byte.
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError) as exc:
+        handle.close()
+        raise RuntimeError(
+            "检测服务已在运行，不能重复启动；请先停止已有的 main.py 进程"
+        ) from exc
+    _INSTANCE_LOCK_HANDLE = handle
 
 
 def _rules_for_camera(snapshot, cam_cfg):
@@ -156,6 +195,9 @@ class MachineVisionSystem:
         analyzer = getattr(self, "_analyzer", None)
         if analyzer is not None:
             analyzer.set_templates(snapshot.templates)
+        snapshot_manager = getattr(self, "_snapshot_manager", None)
+        if snapshot_manager is not None:
+            snapshot_manager.apply_settings(snapshot.settings.get("snapshot", {}))
         self._sync_models_from_snapshot(snapshot)
         if getattr(self, "_running", False):
             self._sync_cameras_from_snapshot(snapshot.cameras)
@@ -475,6 +517,7 @@ class MachineVisionSystem:
 def main():
     # Normal mode
     try:
+        _acquire_instance_lock()
         system = MachineVisionSystem()
     except Exception as e:
         print(f"[FATAL] Failed to initialize: {e}", file=sys.stderr)
