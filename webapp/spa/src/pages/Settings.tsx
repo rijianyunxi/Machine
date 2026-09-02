@@ -111,7 +111,6 @@ export default function SettingsPage() {
   };
 
   const testLlm = wrap("llmtest", async () => {
-    if (!(await doSave("llm"))) return; // 测试前先保存，保证用屏显配置
     try {
       const r = await api<{ reply: string }>("/api/llm/test", { method: "POST", body: {} });
       toast(`LLM 连接正常：${r.reply}`);
@@ -121,7 +120,6 @@ export default function SettingsPage() {
   });
 
   const fetchLlmModels = wrap("llmmodels", async () => {
-    if (!(await doSave("llm"))) return; // 先保存，endpoint/key 以屏显为准
     try {
       const r = await api<{ models: string[] }>("/api/llm/models", { method: "POST", body: {} });
       setLlmModels(r.models);
@@ -229,7 +227,7 @@ export default function SettingsPage() {
                   paddingTop: 12,
                 }}
               >
-                <label>从服务获取模型列表（先保存配置再获取）</label>
+                <label>模型列表</label>
                 <div className="toolbar">
                   <select
                     style={{ flex: 1, minWidth: 160 }}
@@ -239,10 +237,10 @@ export default function SettingsPage() {
                     onChange={(e) => {
                       if (!e.target.value) return;
                       setVal("llm", "model", e.target.value);
-                      toast(`已填入模型：${e.target.value}，请点保存`);
+                      toast(`已选择模型：${e.target.value}，请点击“保存”使配置生效`);
                     }}
                   >
-                    <option value="">— {llmModels.length ? "选择模型" : "点「获取模型」拉取"} —</option>
+                    <option value="">— {llmModels.length ? "选择模型" : "点击“获取模型”拉取"} —</option>
                     {llmModels.map((m) => (
                       <option key={m} value={m}>
                         {m}
@@ -254,11 +252,11 @@ export default function SettingsPage() {
                     disabled={busy.llmmodels}
                     onClick={fetchLlmModels}
                   >
-                    保存并获取模型
+                    {busy.llmmodels ? "获取中…" : "获取模型"}
                   </button>
                 </div>
                 <p className="muted" style={{ marginTop: 6 }}>
-                  选中模型后记得点上方「保存」。
+                  获取模型和测试连接均使用已保存的服务地址与 API Key，不会自动保存；修改配置后请先点击“保存”。
                 </p>
               </div>
             ) : null}
@@ -272,14 +270,14 @@ export default function SettingsPage() {
             >
               {section === "llm" ? (
                 <button className="ghost" disabled={busy.llmtest} onClick={testLlm}>
-                  保存并测试连接
+                  {busy.llmtest ? "测试中…" : "测试连接"}
                 </button>
               ) : null}
               <button
                 disabled={savingSec === section}
                 onClick={() => doSave(section)}
               >
-                保存
+                {savingSec === section ? "保存中…" : "保存"}
               </button>
             </div>
           </div>
