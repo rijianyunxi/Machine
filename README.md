@@ -31,6 +31,132 @@ uv pip install -r requirements.txt --python .venv/bin/python
 
 Windows PowerShell 可将 `.venv/bin/python` 替换为 `.venv\Scripts\python.exe`。
 
+### Docker 部署（使用云端镜像）
+
+项目已提供云端 Docker 镜像 `ghcr.io/rijianyunxi/machine:latest`，部署机器无需安装 Python 依赖，直接使用 Docker Compose 启动即可。将下面内容保存为 `docker-compose.yml`：
+
+```yaml
+services:
+  machine:
+    image: ghcr.io/rijianyunxi/machine:latest
+    ports:
+      - "${MACHINE_PORT:-8000}:8000"
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: "1"
+
+volumes:
+  machine-storage:
+```
+
+在项目目录执行：
+
+```bash
+# 拉取云端镜像
+docker compose pull
+
+# 后台启动
+docker compose up -d
+
+# 查看容器状态
+docker compose ps
+
+# 查看实时日志
+docker compose logs -f machine
+```
+
+启动后访问 `http://localhost:8000`。默认账号为 `admin`，默认密码为 `admin`，首次登录后请立即修改密码。
+
+默认端口为 `8000`，如需修改宿主机端口，可在启动前设置 `MACHINE_PORT`：
+
+```bash
+MACHINE_PORT=8080 docker compose up -d
+```
+
+Windows PowerShell：
+
+```powershell
+$env:MACHINE_PORT = "8080"
+docker compose up -d
+```
+
+`./storage` 会挂载到容器内的 `/app/storage`，数据库、模型、数据集、快照、日志和备份都会持久化到宿主机项目目录下的 `storage/`。停止服务但保留数据：
+
+```bash
+docker compose down
+```
+
+如果云端镜像仓库设置为私有，请先登录 GHCR，再执行 `docker compose pull`：
+
+```bash
+docker login ghcr.io
+docker compose pull
+```
+
+> Compose 文件中的 `machine-storage` 是预留的命名卷；当前配置使用 `./storage:/app/storage` 绑定挂载，因此实际数据保存在项目目录的 `storage/` 中。
+
+### Docker 本地构建
+
+如果不使用云端镜像，也可以在本机根据仓库中的 `Dockerfile` 构建镜像。当前仓库的 `docker-compose.yml` 已配置本地构建，默认使用 CPU 版 PyTorch。
+
+在项目根目录执行：
+
+```bash
+# 构建本地镜像 machine:local
+docker compose build
+
+# 启动服务
+docker compose up -d
+
+# 或者直接构建并启动
+docker compose up -d --build
+```
+
+构建完成后访问 `http://localhost:8000`。查看状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f machine
+```
+
+默认构建参数如下：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `TORCH_VARIANT` | `cpu` | PyTorch 版本，支持 `cpu` 或 `gpu` |
+| `TORCH_VERSION` | `2.8.0` | PyTorch 版本 |
+| `TORCHVISION_VERSION` | `0.23.0` | Torchvision 版本 |
+
+例如，在 Linux/macOS 上构建 GPU 版本：
+
+```bash
+TORCH_VARIANT=gpu docker compose build
+docker compose up -d
+```
+
+Windows PowerShell：
+
+```powershell
+$env:TORCH_VARIANT = "gpu"
+docker compose build
+docker compose up -d
+```
+
+如需完全重新构建（例如依赖或前端构建缓存异常）：
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+停止并删除容器，但保留 `storage/` 中的数据：
+
+```bash
+docker compose down
+```
+
 ## 配置一个新检测（全程面板操作，零代码）
 
 以「检测门口是否有猫」为例，任何目标检测模型同理：
