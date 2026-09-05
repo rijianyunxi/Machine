@@ -440,30 +440,30 @@ export default function CamerasPage() {
         >
           <div className="form-grid">
             <div>
-              <label>监控 ID（唯一，保存后不可改）</label>
+              <label htmlFor="camera-id">监控 ID（唯一，保存后不可改）</label>
               <input
                 className="w240"
                 placeholder="CAM_001"
                 disabled={!!editing}
-                value={form.id}
+                id="camera-id" value={form.id}
                 onChange={(e) => set({ id: e.target.value })}
               />
             </div>
             <div>
-              <label>名称</label>
+              <label htmlFor="camera-name">名称</label>
               <input
                 className="w240"
                 placeholder="车间北门"
-                value={form.name}
+                id="camera-name" value={form.name}
                 onChange={(e) => set({ name: e.target.value })}
               />
             </div>
           </div>
 
           <div className="toolbar" style={{ marginTop: 14 }}>
-            <label style={{ margin: 0, color: "var(--text)", fontSize: 12 }}>连接方式</label>
+            <label style={{ margin: 0, color: "var(--text)", fontSize: 12 }} htmlFor="camera-mode">连接方式</label>
             <Select
-              value={form.mode}
+              id="camera-mode" value={form.mode}
               onChange={(e) => switchMode(e.target.value as "build" | "raw")}
             >
               <option value="build">分段填写（自动组装）</option>
@@ -489,23 +489,23 @@ export default function CamerasPage() {
               </div>
               <div className="form-grid" style={{ marginTop: 2 }}>
                 <div>
-                  <label>IP 地址</label>
-                  <input placeholder="192.168.1.108" value={form.ip} onChange={(e) => set({ ip: e.target.value })} />
+                  <label htmlFor="camera-ip">IP 地址</label>
+                  <input placeholder="192.168.1.108" id="camera-ip" value={form.ip} onChange={(e) => set({ ip: e.target.value })} />
                 </div>
                 <div>
-                  <label>端口</label>
-                  <input value={form.port} onChange={(e) => set({ port: e.target.value })} />
+                  <label htmlFor="camera-port">端口</label>
+                  <input id="camera-port" value={form.port} onChange={(e) => set({ port: e.target.value })} />
                 </div>
                 <div>
-                  <label>用户名</label>
-                  <input placeholder="admin" value={form.user} onChange={(e) => set({ user: e.target.value })} />
+                  <label htmlFor="camera-user">用户名</label>
+                  <input placeholder="admin" id="camera-user" value={form.user} onChange={(e) => set({ user: e.target.value })} />
                 </div>
                 <div>
-                  <label>密码（编辑时留空 = 保持原密码）</label>
+                  <label htmlFor="camera-pass">密码（编辑时留空 = 保持原密码）</label>
                   <input
                     type="password"
                     placeholder={passPh}
-                    value={form.pass}
+                    id="camera-pass" value={form.pass}
                     onChange={(e) => set({ pass: e.target.value })}
                   />
                 </div>
@@ -519,10 +519,10 @@ export default function CamerasPage() {
                   />
                 </div>
                 <div>
-                  <label>码流</label>
+                  <label htmlFor="camera-stream">码流</label>
                   <Select
                     style={{ width: "100%" }}
-                    value={form.stream}
+                    id="camera-stream" value={form.stream}
                     onChange={(e) => set({ stream: e.target.value as "0" | "1" })}
                   >
                     <option value="1">子码流（检测推荐）</option>
@@ -532,11 +532,11 @@ export default function CamerasPage() {
               </div>
               {form.vendor === "generic" ? (
                 <div id="f-generic-wrap">
-                  <label>自定义路径（含 / 开头）</label>
+                  <label htmlFor="camera-path">自定义路径（含 / 开头）</label>
                   <input
                     style={{ width: "100%" }}
                     placeholder="/live/ch1"
-                    value={form.path}
+                    id="camera-path" value={form.path}
                     onChange={(e) => set({ path: e.target.value })}
                   />
                 </div>

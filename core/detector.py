@@ -71,6 +71,9 @@ class Detector:
         self.iou = iou
         self.img_size = img_size
         self._model = None
+        # The same model instance is shared by live detection and panel jobs.
+        # Serialize only the model invocation; per-request options stay local.
+        self._inference_lock = threading.Lock()
         self._last_error: Optional[DetectionError] = None
         self._error_count = 0
         self._logger = get_logger(f"detector.{name}")
@@ -93,12 +96,19 @@ class Detector:
             self._logger.error(f"Failed to load model [{self.name}]: {e}")
             raise
 
-    def detect(self, frame: np.ndarray) -> List[Detection]:
-        """Run detection on a frame.
+    def detect(
+        self,
+        frame: np.ndarray,
+        *,
+        confidence: Optional[float] = None,
+        iou: Optional[float] = None,
+        img_size: Optional[int] = None,
+    ) -> List[Detection]:
+        """Run detection on a frame using optional request-local overrides.
 
-        A returned empty list means inference completed successfully and no
-        objects were found.  Model/runtime failures raise ``DetectionError``
-        so they cannot be mistaken for a real empty frame.
+        Overrides are deliberately not persisted on the detector.  The live
+        loop, test bench, and dataset pre-labeling share model instances, so
+        temporary panel settings must not alter future live inference.
         """
         if self._model is None:
             error = DetectionError(self.name, "model is not loaded")
@@ -106,15 +116,23 @@ class Detector:
             self._error_count += 1
             raise error
 
+        effective_confidence = self.confidence if confidence is None else float(confidence)
+        effective_iou = self.iou if iou is None else float(iou)
+        effective_img_size = self.img_size if img_size is None else int(img_size)
+
         try:
-            results = self._model(
-                frame,
-                conf=self.confidence,
-                iou=self.iou,
-                imgsz=self.img_size,
-                device=self.device,
-                verbose=False,
-            )
+            # Ultralytics model objects are not guaranteed to support parallel
+            # calls.  Keep the critical model invocation serialized while
+            # retaining request-local inference parameters.
+            with self._inference_lock:
+                results = self._model(
+                    frame,
+                    conf=effective_confidence,
+                    iou=effective_iou,
+                    imgsz=effective_img_size,
+                    device=self.device,
+                    verbose=False,
+                )
 
             detections = []
             if results and len(results) > 0:
@@ -342,9 +360,15 @@ class MultiDetector:
     # ---------- inference ----------
 
     def detect_all(
-        self, frame: np.ndarray, model_names: Optional[List[str]] = None
+        self,
+        frame: np.ndarray,
+        model_names: Optional[List[str]] = None,
+        *,
+        confidence: Optional[float] = None,
+        iou: Optional[float] = None,
+        img_size: Optional[int] = None,
     ) -> List[Detection]:
-        """Run the given models (default: all loaded) on a frame and merge."""
+        """Run selected models with optional request-local overrides."""
         all_detections = []
         with self._registry_lock:
             if model_names is None:
@@ -364,7 +388,14 @@ class MultiDetector:
 
         for detector in detectors:
             try:
-                all_detections.extend(detector.detect(frame))
+                all_detections.extend(
+                    detector.detect(
+                        frame,
+                        confidence=confidence,
+                        iou=iou,
+                        img_size=img_size,
+                    )
+                )
             except DetectionError:
                 # Do not continue with the other models: a partial result can
                 # make absence/PPE rules semantically unsafe for this frame.

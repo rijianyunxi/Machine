@@ -118,5 +118,41 @@ class DatasetServiceSplitTests(unittest.TestCase):
                                  ["helmet", "vest"])
 
 
+    def test_prelabel_maps_model_class_name_to_dataset_class_id(self):
+        from core.detector import Detection
+
+        mapping = DatasetService._class_ids_by_name(["person", "helmet"])
+        boxes, skipped = DatasetService._dets_to_yolo(
+            [Detection(0, "helmet", 0.9, (10, 10, 30, 30))],
+            (100, 100, 3),
+            mapping,
+        )
+        self.assertEqual(skipped, 0)
+        self.assertEqual(boxes[0]["cls"], 1)
+
+    def test_prelabel_skips_unmapped_model_classes(self):
+        from core.detector import Detection
+
+        boxes, skipped = DatasetService._dets_to_yolo(
+            [Detection(0, "cigarette", 0.9, (10, 10, 30, 30))],
+            (100, 100, 3),
+            DatasetService._class_ids_by_name(["person"]),
+        )
+        self.assertEqual(boxes, [])
+        self.assertEqual(skipped, 1)
+
+    def test_prelabel_class_mapping_normalizes_names_and_rejects_duplicates(self):
+        from core.detector import Detection
+
+        mapping = DatasetService._class_ids_by_name(["Person", "Safety Helmet"])
+        boxes, skipped = DatasetService._dets_to_yolo(
+            [Detection(4, "  safety   helmet  ", 0.9, (10, 10, 30, 30))],
+            (100, 100, 3), mapping,
+        )
+        self.assertEqual((boxes[0]["cls"], skipped), (1, 0))
+        with self.assertRaisesRegex(DatasetError, "重复类别名"):
+            DatasetService._class_ids_by_name(["person", " Person "])
+
+
 if __name__ == "__main__":
     unittest.main()

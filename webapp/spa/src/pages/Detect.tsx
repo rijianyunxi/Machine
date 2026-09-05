@@ -8,6 +8,7 @@ import type {
   ModelsResponse,
 } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
 import { useToast } from "../ui/Toast";
 import { Empty, useBusy } from "../ui/badges";
 import { useLightbox } from "../ui/Lightbox";
@@ -104,25 +105,36 @@ export default function DetectPage() {
       <div className="grid row2">
         <div className="card">
           <div className="card-title">输入</div>
-          <div className="toolbar">
-            <label
-              className="mini ghost"
-              style={{ padding: "6px 12px", cursor: "pointer", flexShrink: 0 }}
+          <div className="file-upload">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp"
+              hidden
+              onChange={(e) => setImgName(e.target.files?.[0]?.name || "")}
+            />
+            <button
+              type="button"
+              className="ghost file-upload__pick"
+              disabled={busy.run}
+              aria-describedby="detect-file-status detect-file-hint"
+              onClick={() => fileRef.current?.click()}
             >
-              选择图片
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,.webp"
-                style={{ display: "none" }}
-                onChange={(e) => setImgName(e.target.files?.[0]?.name || "")}
-              />
-            </label>
-            <span className="muted" style={{ fontSize: 12, flex: 1 }}>
-              {imgName || "未选择文件"}
-            </span>
-            <button disabled={busy.run} onClick={runTest}>
-              开始检测
+              <Icon name="upload" size={16} />
+              {imgName ? "更换图片" : "选择图片"}
+            </button>
+            <div className="file-upload__info">
+              <span id="detect-file-status" className="file-upload__name" title={imgName || undefined} role="status">
+                {imgName || "尚未选择图片"}
+              </span>
+              <span id="detect-file-hint" className="file-upload__hint">支持 JPG、PNG、WebP</span>
+            </div>
+            <button
+              className="file-upload__run"
+              disabled={busy.run || !imgName}
+              onClick={runTest}
+            >
+              {busy.run ? "检测中…" : "开始检测"}
             </button>
           </div>
           <div className="toolbar" style={{ marginTop: 12 }}>

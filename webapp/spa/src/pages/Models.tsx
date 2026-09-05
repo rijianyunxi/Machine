@@ -224,8 +224,9 @@ export default function ModelsPage() {
                   )}
                 </div>
                 <div className="ops">
-                  <label style={{ color: "var(--muted)" }}>conf</label>
+                  <label htmlFor={`model-confidence-${m.name}`} style={{ color: "var(--muted)" }}>conf</label>
                   <input
+                    id={`model-confidence-${m.name}`}
                     className="mini"
                     style={{ width: 76 }}
                     type="number"
@@ -273,25 +274,37 @@ export default function ModelsPage() {
             <Icon name="alert-triangle" size={14} />
             <span>.pt 为可执行 pickle，仅导入可信来源的模型；上限 200MB</span>
           </div>
-          <div className="toolbar" style={{ marginBottom: 14 }}>
-            <label
-              className="mini ghost"
-              style={{ padding: "6px 12px", cursor: "pointer", flexShrink: 0 }}
+          <div className="file-upload" style={{ marginBottom: 14 }} aria-busy={!!busy.up}>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pt"
+              hidden
+              onChange={(e) => setFileName(e.target.files?.[0]?.name || "")}
+            />
+            <button
+              type="button"
+              className="ghost file-upload__pick"
+              disabled={busy.up}
+              aria-describedby="model-file-status model-file-hint"
+              onClick={() => fileRef.current?.click()}
             >
-              选择 .pt 文件
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".pt"
-                style={{ display: "none" }}
-                onChange={(e) => setFileName(e.target.files?.[0]?.name || "")}
-              />
-            </label>
-            <span className="muted" style={{ fontSize: 12, flex: 1 }}>
-              {fileName || "未选择文件"}
-            </span>
-            <button disabled={busy.up} onClick={upload}>
-              上传
+              <Icon name="upload" size={16} />
+              {fileName ? "更换模型" : "选择模型"}
+            </button>
+            <div className="file-upload__info">
+              <span id="model-file-status" className="file-upload__name" title={fileName || undefined} role="status">
+                {fileName || "尚未选择模型"}
+              </span>
+              <span id="model-file-hint" className="file-upload__hint">支持 .pt · 最大 200MB</span>
+            </div>
+            <button
+              type="button"
+              className="file-upload__run"
+              disabled={busy.up || !fileName}
+              onClick={upload}
+            >
+              {busy.up ? "上传中…" : "上传模型"}
             </button>
           </div>
           <div className="table-wrap">

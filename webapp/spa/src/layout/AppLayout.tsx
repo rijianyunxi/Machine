@@ -96,6 +96,8 @@ export function AppLayout() {
             <NavLink
               key={it.key}
               to={it.to!}
+              aria-label={it.label}
+              title={it.label}
               className={({ isActive }) => (isActive ? "active" : "")}
             >
               <NavIcon name={it.key} />

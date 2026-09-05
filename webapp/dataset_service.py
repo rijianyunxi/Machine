@@ -51,6 +51,7 @@ class DatasetService:
             "done": 0,
             "total": 0,
             "failed": 0,
+            "skipped_unmapped": 0,
             "models": [],
             "error": None,
             "started_at": None,
@@ -148,6 +149,24 @@ class DatasetService:
         if isinstance(raw, list):
             return [str(x) for x in raw]
         return []
+
+    @staticmethod
+    def _normalize_class_name(value) -> str:
+        """Normalize class names before comparing model and dataset labels."""
+        return " ".join(str(value).strip().casefold().split())
+
+    @classmethod
+    def _class_ids_by_name(cls, names: list) -> dict:
+        """Return unambiguous normalized dataset class names to YOLO IDs."""
+        class_ids = {}
+        for index, name in enumerate(names):
+            normalized = cls._normalize_class_name(name)
+            if not normalized:
+                raise DatasetError("数据集类别名不能为空")
+            if normalized in class_ids:
+                raise DatasetError(f"数据集存在重复类别名: {name}")
+            class_ids[normalized] = index
+        return class_ids
 
     def _write_yaml(self, name: str, names: list):
         doc = {
@@ -480,12 +499,15 @@ class DatasetService:
             self._prelabel_job.update(updates)
 
     def _prelabel_increment(self, key: str):
+        self._prelabel_increment_by(key, 1)
+
+    def _prelabel_increment_by(self, key: str, amount: int):
         lock = getattr(self, "_lock", None)
         if lock is None:
-            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + 1
+            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + amount
             return
         with lock:
-            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + 1
+            self._prelabel_job[key] = self._prelabel_job.get(key, 0) + amount
 
     def prelabel_status(self, name: str | None = None) -> dict:
         lock = getattr(self, "_lock", None)
@@ -505,6 +527,7 @@ class DatasetService:
                 "done": 0,
                 "total": 0,
                 "failed": 0,
+                "skipped_unmapped": 0,
                 "models": [],
                 "error": None,
                 "started_at": None,
@@ -519,10 +542,15 @@ class DatasetService:
         if detector is None or not detector.loaded_models:
             raise DatasetError("没有可用的检测模型")
         selected_models = [model] if model else list(detector.loaded_models)
+        # Detection IDs are model-local.  Pre-label output must use this
+        # dataset's class table, matched by class name instead.
+        class_ids_by_name = None
         started_at = datetime.now().isoformat(timespec="seconds")
         lock = getattr(self, "_lock", None)
         if lock is None:
-            self._load_yaml(name)
+            class_ids_by_name = self._class_ids_by_name(
+                self._names(self._load_yaml(name))
+            )
             if self._prelabel_job.get("running"):
                 raise DatasetError("已有预标注任务在运行")
             self._prelabel_job = {
@@ -531,6 +559,7 @@ class DatasetService:
                 "done": 0,
                 "total": 0,
                 "failed": 0,
+                "skipped_unmapped": 0,
                 "models": selected_models,
                 "error": None,
                 "started_at": started_at,
@@ -542,7 +571,9 @@ class DatasetService:
                 # Validate while holding the same lock used by delete().
                 # This prevents a delete/start race from creating a job for a
                 # dataset that has just been removed.
-                self._load_yaml(name)
+                class_ids_by_name = self._class_ids_by_name(
+                    self._names(self._load_yaml(name))
+                )
                 if self._prelabel_job.get("running"):
                     raise DatasetError("已有预标注任务在运行")
                 self._prelabel_job = {
@@ -551,6 +582,7 @@ class DatasetService:
                     "done": 0,
                     "total": 0,
                     "failed": 0,
+                    "skipped_unmapped": 0,
                     "models": selected_models,
                     "error": None,
                     "started_at": started_at,
@@ -562,7 +594,6 @@ class DatasetService:
         )
 
         def job():
-            overrides = []
             try:
                 self._prelabel_log("正在扫描未标注图片…")
                 targets = []
@@ -576,46 +607,46 @@ class DatasetService:
                 if not targets:
                     self._prelabel_log("没有符合条件的未标注图片")
 
-                try:
-                    if model and conf is not None:
-                        detector.set_thresholds(model, confidence=conf)
-                        overrides.append(model)
-                    for index, info in enumerate(targets, 1):
-                        with self._lock:
-                            running = bool(self._prelabel_job.get("running"))
-                        if not running:
-                            self._prelabel_log("任务已停止")
-                            break
-                        location = f"{info['split']}/{info['file']}"
-                        try:
-                            image_path = self.image_path(
-                                name, info["file"], split=info["split"])
-                            import cv2
+                for index, info in enumerate(targets, 1):
+                    with self._lock:
+                        running = bool(self._prelabel_job.get("running"))
+                    if not running:
+                        self._prelabel_log("任务已停止")
+                        break
+                    location = f"{info['split']}/{info['file']}"
+                    try:
+                        image_path = self.image_path(
+                            name, info["file"], split=info["split"])
+                        import cv2
 
-                            img = cv2.imread(str(image_path))
-                            if img is None:
-                                raise RuntimeError("图片读取失败")
-                            dets = detector.detect_all(
-                                img, model_names=[model] if model else None)
-                            boxes = self._dets_to_yolo(dets, img.shape)
-                            self.save_labels(
-                                name, info["stem"], boxes, split=info["split"])
-                            self._prelabel_increment("done")
-                            self._prelabel_log(
-                                f"{index}/{len(targets)} · {location} · 检测到 {len(boxes)} 个框"
+                        img = cv2.imread(str(image_path))
+                        if img is None:
+                            raise RuntimeError("图片读取失败")
+                        dets = detector.detect_all(
+                            img,
+                            model_names=[model] if model else None,
+                            confidence=conf,
+                        )
+                        boxes, skipped_unmapped = self._dets_to_yolo(
+                            dets, img.shape, class_ids_by_name
+                        )
+                        self.save_labels(
+                            name, info["stem"], boxes, split=info["split"])
+                        self._prelabel_increment("done")
+                        if skipped_unmapped:
+                            self._prelabel_increment_by(
+                                "skipped_unmapped", skipped_unmapped
                             )
-                        except Exception as image_error:
-                            self._prelabel_increment("done")
-                            self._prelabel_increment("failed")
-                            self._prelabel_log(
-                                f"{index}/{len(targets)} · {location} · 处理失败：{image_error}"
-                            )
-                finally:
-                    cfg = {m["name"]: m for m in
-                           self.state.settings().get("model", {}).get("models", [])}
-                    for mn in overrides:
-                        val = cfg.get(mn, {}).get("confidence_override")
-                        detector.set_thresholds(mn, confidence=val)
+                        self._prelabel_log(
+                            f"{index}/{len(targets)} · {location} · 检测到 {len(boxes)} 个框"
+                            + (f" · 跳过 {skipped_unmapped} 个未映射类别" if skipped_unmapped else "")
+                        )
+                    except Exception as image_error:
+                        self._prelabel_increment("done")
+                        self._prelabel_increment("failed")
+                        self._prelabel_log(
+                            f"{index}/{len(targets)} · {location} · 处理失败：{image_error}"
+                        )
             except Exception as e:
                 self._prelabel_update(error=str(e))
                 self._prelabel_log(f"任务异常：{e}")
@@ -632,20 +663,32 @@ class DatasetService:
 
         threading.Thread(target=job, name="prelabel", daemon=True).start()
 
-    @staticmethod
-    def _dets_to_yolo(dets, shape) -> list:
+    @classmethod
+    def _dets_to_yolo(cls, dets, shape, class_ids_by_name: dict) -> tuple[list, int]:
+        """Convert model detections using the target dataset's class IDs.
+
+        A model's numeric class ID has no stable meaning outside that model;
+        unknown classes are skipped rather than producing a mislabeled box.
+        """
         h, w = shape[:2]
         boxes = []
+        skipped_unmapped = 0
         for d in dets:
+            target_class_id = class_ids_by_name.get(
+                cls._normalize_class_name(d.class_name)
+            )
+            if target_class_id is None:
+                skipped_unmapped += 1
+                continue
             x1, y1, x2, y2 = d.bbox
             boxes.append({
-                "cls": d.class_id,
+                "cls": target_class_id,
                 "x": min(max(((x1 + x2) / 2) / w, 0), 1),
                 "y": min(max(((y1 + y2) / 2) / h, 0), 1),
                 "w": min(max((x2 - x1) / w, 0), 1),
                 "h": min(max((y2 - y1) / h, 0), 1),
             })
-        return boxes
+        return boxes, skipped_unmapped
 
 
 

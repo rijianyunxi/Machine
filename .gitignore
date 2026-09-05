@@ -18,3 +18,9 @@ runs/
 
 # Runtime data: database, logs, datasets, snapshots and models
 storage/
+
+# Generated UI audit artifacts: keep scripts/docs, exclude screenshots/reports
+docs/audit/uiux/*/
+docs/audit/uiux/*.png
+docs/audit/uiux/*.jpg
+docs/audit/uiux/*.json

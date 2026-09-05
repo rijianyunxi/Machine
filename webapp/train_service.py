@@ -8,8 +8,12 @@ results.csv ultralytics writes after every epoch.
 
 import csv
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -21,7 +25,30 @@ from infrastructure.storage_paths import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RUNS_ROOT = PROJECT_ROOT / "runs" / "panel"
 WORKER = Path(__file__).resolve().parent / "train_worker.py"
+SAFE_RUN_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _inside(root: Path, candidate: Path, *, strict: bool = False) -> Path:
+    """Resolve *candidate* and require it to remain below *root*."""
+    resolved_root = root.resolve(strict=True)
+    resolved_candidate = candidate.resolve(strict=strict)
+    try:
+        resolved_candidate.relative_to(resolved_root)
+    except ValueError as exc:
+        raise RuntimeError("训练产物路径越界") from exc
+    return resolved_candidate
+
+
+def _contains_symlink(root: Path, candidate: Path) -> bool:
+    """Whether any raw path component below *root* is a symbolic link."""
+    current = root
+    for part in candidate.relative_to(root).parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
 
 
 class TrainService:
@@ -34,15 +61,29 @@ class TrainService:
 
     # ---------- start / stop ----------
 
+    @staticmethod
+    def _validate_job_name(name: str) -> str:
+        name = (name or "").strip()
+        if not SAFE_RUN_NAME.fullmatch(name):
+            raise RuntimeError("任务名只允许字母、数字、下划线和连字符（≤64）")
+        return name
+
+    @staticmethod
+    def _validate_model_name(model_name: str) -> str:
+        model_name = (model_name or "").strip()
+        if not SAFE_RUN_NAME.fullmatch(model_name):
+            raise RuntimeError("模型名只允许字母、数字、下划线和连字符（≤64）")
+        return model_name
+
     def start(self, dataset: str, base_model: str, epochs: int = 100,
               imgsz: int = 640, batch: int = 16, device: str = "auto",
               name: str = "") -> dict:
         with self._lock:
             if self._proc is not None and self._proc.poll() is None:
                 raise RuntimeError("已有训练任务在运行，请先停止")
-            name = (name or f"{dataset}_{epochs}ep").strip() or "panel_run"
-            if not Path(name).name == name:
-                raise RuntimeError("非法任务名")
+            name = self._validate_job_name(
+                (name or f"{dataset}_{epochs}ep").strip() or "panel_run"
+            )
 
             ds_yaml = self.state.datasets.yaml_path(dataset)
             if not ds_yaml.is_file():
@@ -64,10 +105,10 @@ class TrainService:
                 "imgsz": int(imgsz),
                 "batch": int(batch),
                 "device": device,
-                "project": str(PROJECT_ROOT / "runs" / "panel"),
+                "project": str(RUNS_ROOT),
                 "name": name,
             }
-            args_file = PROJECT_ROOT / "runs" / "panel" / f"{name}_args.json"
+            args_file = RUNS_ROOT / f"{name}_args.json"
             args_file.parent.mkdir(parents=True, exist_ok=True)
             args_file.write_text(json.dumps(args), encoding="utf-8")
 
@@ -78,7 +119,7 @@ class TrainService:
                 stdout=log_fh, stderr=subprocess.STDOUT, cwd=str(PROJECT_ROOT))
             self._meta = {"name": name, "dataset": dataset, "epochs": int(epochs),
                           "log": str(log_file),
-                          "run_dir": str(PROJECT_ROOT / "runs" / "panel" / name),
+                          "run_dir": str(RUNS_ROOT / name),
                           "started": True}
             return {"name": name, "pid": self._proc.pid}
 
@@ -145,7 +186,7 @@ class TrainService:
         return out
 
     def runs(self) -> list:
-        base = PROJECT_ROOT / "runs" / "panel"
+        base = RUNS_ROOT
         if not base.exists():
             return []
         out = []
@@ -161,14 +202,55 @@ class TrainService:
         return out
 
     def register_best(self, name: str, model_name: str) -> dict:
-        """Copy best.pt of a finished run into storage/models and register it."""
-        run_best = PROJECT_ROOT / "runs" / "panel" / name / "weights" / "best.pt"
-        if not run_best.exists():
-            raise RuntimeError("该任务还没有 best.pt（未完成或已失败）")
-        dest = MODELS_DIR / f"{model_name}.pt"
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(run_best.read_bytes())
-        self.state.register_model(model_name, dest.name, enabled=False)
+        """Atomically register a completed run without crossing storage roots."""
+        name = self._validate_job_name(name)
+        model_name = self._validate_model_name(model_name)
+
+        with self._lock:
+            RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+            MODELS_DIR.mkdir(parents=True, exist_ok=True)
+            run_root = RUNS_ROOT.resolve(strict=True)
+            models_root = MODELS_DIR.resolve(strict=True)
+
+            # Resolve every component before copying.  This rejects path
+            # traversal and symlink escapes even if a valid-looking run name
+            # happens to point at an unexpected location.
+            raw_run_dir = RUNS_ROOT / name
+            raw_run_best = raw_run_dir / "weights" / "best.pt"
+            try:
+                run_dir = _inside(run_root, raw_run_dir, strict=True)
+                resolved_best = _inside(run_root, raw_run_best, strict=True)
+            except FileNotFoundError as exc:
+                raise RuntimeError("该任务还没有 best.pt（未完成或已失败）") from exc
+            if (_contains_symlink(RUNS_ROOT, raw_run_best)
+                    or not resolved_best.is_file()):
+                raise RuntimeError("训练产物 best.pt 无效")
+
+            dest = _inside(models_root, MODELS_DIR / f"{model_name}.pt")
+            if dest.exists() or dest.is_symlink():
+                raise RuntimeError(f"模型文件已存在: {dest.name}")
+
+            temp_path = None
+            published = False
+            try:
+                fd, temp_name = tempfile.mkstemp(
+                    prefix=f".{model_name}.", suffix=".tmp", dir=models_root
+                )
+                temp_path = Path(temp_name)
+                with os.fdopen(fd, "wb") as temp_file, resolved_best.open("rb") as source:
+                    shutil.copyfileobj(source, temp_file)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                os.replace(temp_path, dest)
+                published = True
+                self.state.register_model(model_name, dest.name, enabled=False)
+            except Exception:
+                if published:
+                    dest.unlink(missing_ok=True)
+                raise
+            finally:
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
         return {"file": dest.name, "model": model_name}
 
 

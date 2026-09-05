@@ -73,6 +73,7 @@ export function BarChart({
   const iw = w - pad.l - pad.r;
   const ih = h - pad.t - pad.b;
   const bw = iw / data.length;
+  const labelStride = w < 380 ? 3 : w < 520 ? 2 : 1;
 
   const grid: React.ReactNode[] = [];
   for (let i = 0; i <= 2; i++) {
@@ -140,7 +141,7 @@ export function BarChart({
         </rect>,
       );
     }
-    if (d.value) {
+    if (d.value && i % labelStride === 0) {
       bars.push(
         <text
           key={`v${i}`}
@@ -155,18 +156,20 @@ export function BarChart({
         </text>,
       );
     }
-    bars.push(
-      <text
-        key={`x${i}`}
-        x={+(cx + bw / 2).toFixed(1)}
-        y={h - 8}
-        fill="var(--muted)"
-        fontSize={10}
-        textAnchor="middle"
-      >
-        {String(d.label).slice(5)}
-      </text>,
-    );
+    if (i % labelStride === 0) {
+      bars.push(
+        <text
+          key={`x${i}`}
+          x={+(cx + bw / 2).toFixed(1)}
+          y={h - 8}
+          fill="var(--muted)"
+          fontSize={10}
+          textAnchor="middle"
+        >
+          {String(d.label).slice(5)}
+        </text>,
+      );
+    }
   });
 
   return (

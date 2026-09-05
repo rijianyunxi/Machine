@@ -21,6 +21,8 @@ const SETTING_TABS: SettingsTab[] = [
 ];
 
 export default function SettingsPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [values, setValues] = useState<Values>({});
   const [llmModels, setLlmModels] = useState<string[]>([]);
@@ -30,23 +32,31 @@ export default function SettingsPage() {
   const { busy, wrap } = useBusy();
 
   const refresh = useCallback(async () => {
-    const d = await api<SettingsResponse>("/api/settings");
-    setData(d);
-    setActiveTab((current) =>
-      SETTING_TABS.some((tab) => tab.key === current) ? current : SETTING_TABS[0].key,
-    );
-    // Keep unsaved drafts in the form, while filling newly loaded/missing keys
-    // from the server. A save below explicitly replaces the saved section.
-    setValues((prev) => {
-      const next: Values = {};
-      for (const [section, s] of Object.entries(d.sections)) {
-        next[section] = { ...(prev[section] || {}) };
-        for (const k of s.keys) {
-          if (next[section][k.key] === undefined) next[section][k.key] = k.value;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const d = await api<SettingsResponse>("/api/settings");
+      setData(d);
+      setActiveTab((current) =>
+        SETTING_TABS.some((tab) => tab.key === current) ? current : SETTING_TABS[0].key,
+      );
+      // Keep unsaved drafts in the form, while filling newly loaded/missing keys
+      // from the server. A save below explicitly replaces the saved section.
+      setValues((prev) => {
+        const next: Values = {};
+        for (const [section, s] of Object.entries(d.sections)) {
+          next[section] = { ...(prev[section] || {}) };
+          for (const k of s.keys) {
+            if (next[section][k.key] === undefined) next[section][k.key] = k.value;
+          }
         }
-      }
-      return next;
-    });
+        return next;
+      });
+    } catch (e) {
+      setLoadError((e as Error).message || "加载失败");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -149,7 +159,7 @@ export default function SettingsPage() {
     return (
       <Page title="系统设置" subtitle="配置统一保存到 machine.db 并尽可能热生效；改动前请先完成数据库备份">
         <div className="card">
-          <Empty>加载中…</Empty>
+          {loadError ? <div role="alert"><p>加载失败：{loadError}</p><button onClick={refresh} disabled={loading}>重试</button></div> : <div role="status"><Empty>加载中…</Empty></div>}
         </div>
       </Page>
     );
@@ -177,6 +187,7 @@ export default function SettingsPage() {
         </button>
       }
     >
+      {loadError && <div role="alert" className="banner">刷新失败：{loadError}（保留当前数据）<button onClick={refresh} disabled={loading}>重试</button></div>}
       {pend.length ? (
         <div className="banner">
           <Icon name="alert-triangle" size={15} />
@@ -206,7 +217,7 @@ export default function SettingsPage() {
       </div>
       <div
         className="grid settings-grid"
-        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))" }}
+        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))" }}
         role="tabpanel"
       >
         {visibleSections.map(([section, s]) => (
@@ -223,7 +234,7 @@ export default function SettingsPage() {
               if (section === "llm" && k.key === "model") return null;
               return (
                 <div key={k.key}>
-                  <label>
+                  <label htmlFor={`setting-${section}-${k.key}`}>
                     {k.desc}{" "}
                     <span className="mono muted" style={{ fontSize: 10.5 }}>
                       {section}.{k.key}
@@ -231,12 +242,14 @@ export default function SettingsPage() {
                   </label>
                   {k.type === "bool" ? (
                     <input
+                      id={`setting-${section}-${k.key}`}
                       type="checkbox"
                       checked={!!values[section]?.[k.key]}
                       onChange={(e) => setVal(section, k.key, e.target.checked)}
                     />
                   ) : (
                     <input
+                      id={`setting-${section}-${k.key}`}
                       type={(section === "llm" && k.key === "api_key") ||
                             (section === "panel" && k.key === "password")
                             ? "password"
@@ -257,10 +270,10 @@ export default function SettingsPage() {
                   paddingTop: 12,
                 }}
               >
-                <label>模型名（需支持图片输入）</label>
+                <label htmlFor="setting-llm-model">模型名（需支持图片输入）</label>
                 <div className="toolbar llm-model-row">
                   <div className="llm-model-picker">
-                    <input
+                    <input id="setting-llm-model"
                       style={{ width: "100%" }}
                       value={String(values.llm?.model ?? "")}
                       placeholder="输入模型名或点击“获取模型”"

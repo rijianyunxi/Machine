@@ -11,6 +11,7 @@ to live objects -> report what needs a restart.
 """
 
 import copy
+import glob
 import os
 import re
 import shutil
@@ -33,6 +34,8 @@ from utils.logger import get_logger
 from utils.passwords import hash_password, is_password_hash
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+_LEVEL_ALIASES = {"WARN": "WARNING"}
 
 # Panel-writable settings schema: section -> key -> (type, default)
 # Used for validation AND by the settings page to render forms.
@@ -1123,19 +1126,54 @@ class RuntimeState:
     # Logs
     # ------------------------------------------------------------------
 
-    def tail_logs(self, tail: int = 500, level: str = None) -> list:
-        log_file = self.settings().get("logging", {}).get("file",
-                                                          "storage/logs/machine_vision.log")
+    def _log_path(self) -> Path:
+        log_file = self.settings().get("logging", {}).get(
+            "file", "storage/logs/machine_vision.log")
         path = Path(log_file)
         if not path.is_absolute():
             path = PROJECT_ROOT / path
+        return path
+
+    def tail_logs(self, tail: int = 500, level: str = None) -> list:
+        path = self._log_path()
         if not path.exists():
             return []
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         lines = lines[-int(tail):]
         if level:
-            lines = [l for l in lines if f"[{level.upper()}]" in l]
+            wanted = level.upper()
+            wanted = "WARNING" if wanted == "WARN" else wanted
+            matched = []
+            for line in lines:
+                marker = re.match(r".*?\[([A-Za-z]+)\]", line)
+                if marker and _LEVEL_ALIASES.get(
+                    marker.group(1).upper(), marker.group(1).upper()
+                ) == wanted:
+                    matched.append(line)
+            lines = matched
         return lines
+
+    def clear_logs(self, include_backups: bool = False) -> dict:
+        """Truncate the configured active log file.
+
+        Rotated backups are not touched unless explicitly requested; the page
+        only displays the active file, while the flag keeps the operation
+        predictable for API callers.
+        """
+        path = self._log_path()
+        if path.exists() and not path.is_file():
+            raise ValueError("日志路径不是文件")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8"):
+            pass
+        removed_backups = 0
+        if include_backups:
+            pattern = re.compile(rf"{re.escape(path.name)}\.\d+$")
+            for candidate in path.parent.glob(f"{glob.escape(path.name)}.*"):
+                if candidate.is_file() and pattern.fullmatch(candidate.name):
+                    candidate.unlink()
+                    removed_backups += 1
+        return {"ok": True, "file": path.name, "removed_backups": removed_backups}
 
     # ------------------------------------------------------------------
     # Detection test bench

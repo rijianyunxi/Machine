@@ -185,7 +185,6 @@ export const Select = forwardRef<SelectHandle, SelectProps>(function Select(
   return (
     <div
       ref={rootRef}
-      id={id}
       className={"select-control" + (className ? " " + className : "")}
       style={style}
       data-disabled={disabled ? "true" : undefined}
@@ -193,6 +192,7 @@ export const Select = forwardRef<SelectHandle, SelectProps>(function Select(
       data-name={name || undefined}
     >
       <button
+        id={id}
         ref={triggerRef}
         type="button"
         className="select-trigger"

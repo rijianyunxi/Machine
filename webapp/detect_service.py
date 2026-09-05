@@ -35,22 +35,14 @@ class DetectTestService:
             raise RuntimeError("没有可用的检测模型")
 
         with self._lock:  # one test inference at a time
-            overrides = []
-            try:
-                for name in (model_names or detector.loaded_models):
-                    if conf is not None:
-                        detector.set_thresholds(name, confidence=conf)
-                        overrides.append(name)
-                start = time.time()
-                detections = detector.detect_all(image_bgr, model_names=model_names)
-                latency_ms = round((time.time() - start) * 1000)
-            finally:
-                # restore configured thresholds
-                cfg = {m["name"]: m for m in
-                       self.state.settings().get("model", {}).get("models", [])}
-                for name in overrides:
-                    conf_val = cfg.get(name, {}).get("confidence_override")
-                    detector.set_thresholds(name, confidence=conf_val)
+            start = time.time()
+            detections = detector.detect_all(
+                image_bgr,
+                model_names=model_names,
+                confidence=conf,
+                iou=iou,
+            )
+            latency_ms = round((time.time() - start) * 1000)
 
         result_id = next(self._ids)
         annotated_path = RESULTS_DIR / f"test_{result_id}.jpg"

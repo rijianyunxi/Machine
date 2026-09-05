@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useId, useRef } from "react";
+import { useDialog } from "./useDialog";
 import { Icon } from "../layout/icons";
 
 /* 通用弹窗骨架：遮罩 + 卡片，Esc 关闭。沿用 .modal-mask/.modal 样式。
@@ -20,30 +21,8 @@ export function Modal({
   tall?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const lastFocus = useRef<HTMLElement | null>(null);
-  // onClose 通常由父组件内联创建；用 ref 避免输入时父组件重渲染导致焦点效果重复执行。
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    lastFocus.current = document.activeElement as HTMLElement | null;
-    // 焦点移入弹窗（优先第一个可聚焦控件，否则弹窗本身）
-    const box = boxRef.current;
-    if (box) {
-      const focusable = box.querySelector<HTMLElement>(
-        "input:not([type='hidden']), textarea, button, [tabindex]:not([tabindex='-1'])",
-      );
-      (focusable || box).focus();
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      lastFocus.current?.focus?.();
-    };
-  }, []);
+  const titleId = useId();
+  useDialog(boxRef, true, onClose);
 
   return (
     <div
@@ -57,11 +36,12 @@ export function Modal({
         style={{ width }}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
         ref={boxRef}
         tabIndex={-1}
       >
         <div className="modal-h">
-          <h3>{title}</h3>
+          <h3 id={titleId}>{title}</h3>
           <button className="modal-x" onClick={onClose} aria-label="关闭">
             <Icon name="x" size={14} />
           </button>

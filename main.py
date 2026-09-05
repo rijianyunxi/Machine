@@ -398,11 +398,9 @@ class MachineVisionSystem:
                     continue  # stale frozen frame (reconnecting camera)
                 self._stats["frames_processed"] += 1
 
-                # Skip detection entirely while every rule is in cooldown
-                if self._analyzer.all_in_cooldown(
-                    cam_id, rule_defs, frame_data.timestamp
-                ):
-                    continue
+                # Keep inference and rule evaluation running during alert
+                # cooldown. Stateful rules need those observations to reset
+                # dwell/duration state when a condition clears.
 
                 # Only run models required by this camera's active rules:
                 # bound models + any loaded model that supplies the rule's

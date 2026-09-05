@@ -52,6 +52,26 @@ def alert_summary(request: Request, days: int = Query(7, ge=1, le=90)):
     return get_state(request).db.get_alert_summary(days=days)
 
 
+@router.get("/api/alerts/recent-snapshots")
+def recent_alert_snapshots(request: Request):
+    state = get_state(request)
+    items = state.db.get_recent_snapshot_alerts(state.snapshots_dir(), limit=3)
+    for item in items:
+        item["snapshot_url"] = snapshot_url(state, item.get("snapshot_path"))
+    return {"items": items}
+
+
+@router.post("/api/alerts/batch-delete")
+def delete_alerts(request: Request, data: dict):
+    state = get_state(request)
+    try:
+        return abort_on_value_error(
+            lambda: state.db.delete_alerts(data.get("ids"), state.snapshots_dir())
+        )
+    except OSError:
+        raise HTTPException(500, "删除未完成，请检查快照目录权限后重试")
+
+
 @router.post("/api/alerts/{alert_id}/status")
 def set_alert_status(request: Request, alert_id: int, data: dict):
     state = get_state(request)

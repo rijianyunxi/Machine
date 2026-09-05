@@ -1,12 +1,12 @@
 import { Select } from "../ui/Select";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { DatasetInfo } from "../api/types";
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { useToast } from "../ui/Toast";
-import { Empty, useBusy } from "../ui/badges";
+import { useBusy } from "../ui/badges";
 
 /* 在线标注：拖拽画框（YOLO 归一化 cx/cy/w/h）· 快捷键 1-9 选类 / Del 删框 /
  * ←→ 切图（自动保存）/ Ctrl+S 保存 · 本地 YOLO 预标注 · LLM AI 识别 */
@@ -43,12 +43,30 @@ const imageKey = (im: Pick<ImageItem, "file" | "split">) =>
 
 const clsColor = (i: number) => `hsl(${Math.round((i * 137.508) % 360)}, 68%, 58%)`;
 
+function AnnotationEmpty({ icon, title, description, children }: {
+  icon: string;
+  title: string;
+  description: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="anno-empty">
+      <span className="anno-empty__icon" aria-hidden="true"><Icon name={icon} size={24} /></span>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      {children}
+    </div>
+  );
+}
+
 export default function AnnotatePage() {
   const [searchParams] = useSearchParams();
   const [dsList, setDsList] = useState<DatasetInfo[]>([]);
   const [ds, setDs] = useState("");
   const [classes, setClasses] = useState<string[]>([]);
   const [images, setImages] = useState<ImageItem[]>([]);
+  const [datasetLoading, setDatasetLoading] = useState(true);
+  const [datasetError, setDatasetError] = useState("");
   const [idx, setIdx] = useState(-1);
   const [splitFilter, setSplitFilter] = useState<SplitFilter>("all");
   const [boxes, setBoxes] = useState<Box[]>([]);
@@ -151,22 +169,31 @@ export default function AnnotatePage() {
   const switchDs = useCallback(
     async (name: string) => {
       setDs(name);
+      setDatasetLoading(true);
+      setDatasetError("");
       setSplitFilter("all");
       setIdx(-1);
-      await loadInfo(name);
-      const r = await api<{ images: ImageItem[] }>(
-        `/api/datasets/${encodeURIComponent(name)}/images`,
-      );
-      setImages(r.images);
-      if (r.images.length) {
-        setIdx(0);
-        const data = await api<{ boxes: Box[] }>(
-          `/api/datasets/${encodeURIComponent(name)}/labels/${encodeURIComponent(r.images[0].stem)}?split=${encodeURIComponent(r.images[0].split)}`,
+      setImages([]);
+      setBoxes([]);
+      setSel(-1);
+      dirtyRef.current = false;
+      try {
+        await loadInfo(name);
+        const r = await api<{ images: ImageItem[] }>(
+          `/api/datasets/${encodeURIComponent(name)}/images`,
         );
-        setBoxes(data.boxes || []);
-        dirtyRef.current = false;
-      } else {
-        setBoxes([]);
+        setImages(r.images);
+        if (r.images.length) {
+          const data = await api<{ boxes: Box[] }>(
+            `/api/datasets/${encodeURIComponent(name)}/labels/${encodeURIComponent(r.images[0].stem)}?split=${encodeURIComponent(r.images[0].split)}`,
+          );
+          setIdx(0);
+          setBoxes(data.boxes || []);
+        }
+      } catch (e) {
+        setDatasetError((e as Error).message || "请检查连接后重试");
+      } finally {
+        setDatasetLoading(false);
       }
     },
     [loadInfo],
@@ -206,14 +233,16 @@ export default function AnnotatePage() {
 
   useEffect(() => {
     (async () => {
-      const list = (await api<{ datasets: DatasetInfo[] }>("/api/datasets")).datasets;
-      setDsList(list);
-      const initial = searchParams.get("ds") || list[0]?.name || "";
-      if (!initial) {
-        toast("请先到「数据集」页创建数据集", false);
-        return;
+      try {
+        const list = (await api<{ datasets: DatasetInfo[] }>("/api/datasets")).datasets;
+        setDsList(list);
+        const initial = searchParams.get("ds") || list[0]?.name || "";
+        if (initial) await switchDs(initial);
+      } catch (e) {
+        setDatasetError((e as Error).message || "请检查连接后重试");
+      } finally {
+        setDatasetLoading(false);
       }
-      await switchDs(initial);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -562,22 +591,25 @@ export default function AnnotatePage() {
         <>
           <Select
             style={{ minWidth: 180 }}
+            aria-label="选择数据集"
+            disabled={datasetLoading}
             value={ds}
             onChange={(e) => switchDs(e.target.value)}
           >
+            {!dsList.length && <option value="">暂无数据集</option>}
             {dsList.map((d) => (
               <option key={d.name} value={d.name}>
                 {d.name}
               </option>
             ))}
           </Select>
-          <button className="ghost" disabled={busy.prelabel} onClick={aiPrelabel}>
+          <button className="ghost" disabled={busy.prelabel || !img} onClick={aiPrelabel}>
             <Icon name="zap" size={13} /> YOLO 预标注
           </button>
-          <button className="ghost" disabled={busy.llm} onClick={rerunAi}>
+          <button className="ghost" disabled={busy.llm || !img} onClick={rerunAi}>
             <Icon name="sparkles" size={13} /> AI 识别
           </button>
-          <button onClick={() => saveLabels()}>保存 (Ctrl+S)</button>
+          <button disabled={!img} onClick={() => saveLabels()}>保存 (Ctrl+S)</button>
         </>
       }
     >
@@ -590,6 +622,7 @@ export default function AnnotatePage() {
             </div>
             <Select
               aria-label="图片分区筛选"
+              disabled={datasetLoading || !images.length}
               value={splitFilter}
               onChange={(e) => void changeSplitFilter(e.target.value as SplitFilter)}
             >
@@ -644,9 +677,15 @@ export default function AnnotatePage() {
                 );
               })
             ) : (
-              <Empty>
-                {images.length ? "当前分区暂无图片" : "数据集为空，回数据集页导入图片"}
-              </Empty>
+              <AnnotationEmpty
+                icon="images"
+                title={datasetLoading ? "正在加载图片" : datasetError ? "图片加载失败" : images.length ? "当前分区暂无图片" : "暂无图片"}
+                description={datasetLoading ? "请稍候，正在读取数据集。" : datasetError ? "请在画布区域重试。" : images.length ? "切换分区，查看其他图片。" : "导入图片后，将在这里显示缩略图。"}
+              >
+                {!!images.length && !datasetLoading && !datasetError && (
+                  <button className="ghost" onClick={() => void changeSplitFilter("all")}>查看全部分区</button>
+                )}
+              </AnnotationEmpty>
             )}
           </div>
         </div>
@@ -655,7 +694,7 @@ export default function AnnotatePage() {
         <div className="card anno-canvas-card" style={{ padding: 14 }}>
           <div
             id="stage-wrap"
-            className="anno-stage"
+            className={`anno-stage${!img ? " anno-stage--empty" : ""}`}
             style={{ position: "relative", userSelect: "none", lineHeight: 0 }}
             onMouseDown={onStageMouseDown}
           >
@@ -738,11 +777,21 @@ export default function AnnotatePage() {
                 ) : null}
               </div>
             ) : (
-              <Empty>未选择图片</Empty>
+              <AnnotationEmpty
+                icon={datasetError ? "alert-triangle" : "images"}
+                title={datasetLoading ? "正在准备标注画布" : datasetError ? "暂时无法加载图片" : !ds ? "创建数据集，开始标注" : !images.length ? "导入第一张图片，开始标注" : "选择图片，开始标注"}
+                description={datasetLoading ? "图片加载完成后即可开始标注。" : datasetError || (!images.length ? "前往数据集页导入图片，再回到这里选择类别、拖拽画框。" : "从图片列表选择一张图片；当前分区为空时，可切换到其他分区。")}
+              >
+                {!datasetLoading && (datasetError ? (
+                  <button onClick={() => ds ? void switchDs(ds) : window.location.reload()}><Icon name="refresh" size={16} />重新加载</button>
+                ) : !images.length ? (
+                  <Link className="btn" to="/datasets"><Icon name="upload" size={16} />{ds ? "前往导入图片" : "前往创建数据集"}</Link>
+                ) : null)}
+              </AnnotationEmpty>
             )}
           </div>
           <div className="toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>
-            <span className="muted">{img ? img.file : "未选择图片"}</span>
+            <span className="muted">{img ? img.file : "标注画布"}</span>
             <span className="toolbar">
               <button className="mini ghost" disabled={visibleIdx <= 0} onClick={() => nav(-1)}>
                 <Icon name="chevron-left" size={13} /> 上一张
@@ -834,9 +883,7 @@ export default function AnnotatePage() {
                     );
                   })
                 ) : (
-                  <p className="muted" style={{ fontSize: 12 }}>
-                    还没有 AI 识别结果。编辑提示词后点「重新识别」，勾选后再「加入所选」。
-                  </p>
+                  <AnnotationEmpty icon="sparkles" title={img ? "暂无 AI 识别结果" : "等待选择图片"} description={img ? "编辑提示词并点击「重新识别」，确认结果后加入标注。" : "选择图片后，可使用 AI 辅助识别目标。"} />
                 )
               ) : manual.length ? (
                 manual.map(({ b, i }) => (
@@ -865,7 +912,11 @@ export default function AnnotatePage() {
                   </div>
                 ))
               ) : (
-                <p className="muted">暂无标注框，在图上拖拽画框</p>
+                <AnnotationEmpty
+                  icon="square"
+                  title={img ? "这张图片还没有标注" : "等待选择图片"}
+                  description={img ? "先选择类别，再在图片上拖拽画框；完成后点击保存。" : "选择图片后，这里会显示标注框及对应类别。"}
+                />
               )}
             </div>
             {boxTab === "ai" && ai.length ? (
@@ -905,7 +956,7 @@ export default function AnnotatePage() {
                 <button
                   className="mini"
                   style={{ width: "100%", marginTop: 8 }}
-                  disabled={busy.llm}
+                  disabled={busy.llm || !img}
                   onClick={rerunAi}
                 >
                   <Icon name="refresh" size={12} /> 重新识别

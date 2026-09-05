@@ -158,10 +158,10 @@ export default function TrainPage() {
       <div className="grid row2">
         <div className="card">
           <div className="card-title">启动训练</div>
-          <label>数据集（YOLO 格式，来自「数据集」页）</label>
+          <label htmlFor="train-dataset">数据集（YOLO 格式，来自「数据集」页）</label>
           <Select
             style={{ width: "100%" }}
-            value={form.dataset}
+            id="train-dataset" value={form.dataset}
             onChange={(e) => setForm({ ...form, dataset: e.target.value })}
           >
             {dsList.length ? (
@@ -174,10 +174,10 @@ export default function TrainPage() {
               <option value="">无数据集，请先创建</option>
             )}
           </Select>
-          <label>基础模型（storage/models/ 目录下的 .pt，或官方名）</label>
+          <label htmlFor="train-base_model">基础模型（storage/models/ 目录下的 .pt，或官方名）</label>
           <Select
             style={{ width: "100%" }}
-            value={form.base_model}
+            id="train-base_model" value={form.base_model}
             onChange={(e) => setForm({ ...form, base_model: e.target.value })}
           >
             {modelFiles.map((f) => (
@@ -189,37 +189,37 @@ export default function TrainPage() {
           </Select>
           <div className="form-grid">
             <div>
-              <label>轮数 epochs</label>
+              <label htmlFor="train-epochs">轮数 epochs</label>
               <input
                 type="number"
-                value={form.epochs}
+                id="train-epochs" value={form.epochs}
                 min={1}
                 onChange={(e) => setForm({ ...form, epochs: e.target.value })}
               />
             </div>
             <div>
-              <label>图片尺寸 imgsz</label>
+              <label htmlFor="train-imgsz">图片尺寸 imgsz</label>
               <input
                 type="number"
-                value={form.imgsz}
+                id="train-imgsz" value={form.imgsz}
                 min={32}
                 onChange={(e) => setForm({ ...form, imgsz: e.target.value })}
               />
             </div>
             <div>
-              <label>batch</label>
+              <label htmlFor="train-batch">batch</label>
               <input
                 type="number"
-                value={form.batch}
+                id="train-batch" value={form.batch}
                 min={1}
                 onChange={(e) => setForm({ ...form, batch: e.target.value })}
               />
             </div>
             <div>
-              <label>设备 device</label>
+              <label htmlFor="train-device">设备 device</label>
               <Select
                 style={{ width: "100%" }}
-                value={form.device}
+                id="train-device" value={form.device}
                 onChange={(e) => setForm({ ...form, device: e.target.value })}
               >
                 <option value="auto">auto</option>
@@ -229,11 +229,11 @@ export default function TrainPage() {
               </Select>
             </div>
           </div>
-          <label>任务名（默认 数据集_epochs）</label>
+          <label htmlFor="train-name">任务名（默认 数据集_epochs）</label>
           <input
             className="w320"
             placeholder="site_ppe_v1_50ep"
-            value={form.name}
+            id="train-name" value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
           <div style={{ marginTop: 16, display: "flex", gap: 10 }}>

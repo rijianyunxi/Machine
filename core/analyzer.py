@@ -329,7 +329,8 @@ class BehaviorAnalyzer:
 
     def _in_cooldown(self, camera_id: str, rule_id: int, timestamp: float) -> bool:
         key = (camera_id, rule_id)
-        last_time = self._last_alert.get(key)
+        with self._lock:
+            last_time = self._last_alert.get(key)
         if last_time is None:
             return False
         return (timestamp - last_time) < self._cooldown
@@ -337,7 +338,11 @@ class BehaviorAnalyzer:
     def all_in_cooldown(
         self, camera_id: str, rules: List[RuleDefinition], timestamp: float
     ) -> bool:
-        """True when every candidate rule is in cooldown (detection can be skipped)."""
+        """True when every candidate rule is in cooldown.
+
+        This is informational only: callers must keep evaluating rules so
+        stateful conditions can observe recovery while alerts are suppressed.
+        """
         return all(self._in_cooldown(camera_id, r.id, timestamp) for r in rules)
 
     # ---------- main entry ----------
@@ -361,12 +366,14 @@ class BehaviorAnalyzer:
             check = RULE_LOGICS.get(logic) if logic else None
             if check is None:
                 continue
-            if self._in_cooldown(camera_id, rule.id, timestamp):
-                continue
 
+            # Stateful rules must consume every observation, including frames
+            # inside cooldown, otherwise dwell/duration state cannot reset
+            # when an object leaves and can trigger a false immediate alert.
+            in_cooldown = self._in_cooldown(camera_id, rule.id, timestamp)
             v = check(camera_id, rule, detections, timestamp,
                       frame_size=frame_size)
-            if v is not None:
+            if v is not None and not in_cooldown:
                 violations.append(v)
                 with self._lock:
                     self._last_alert[(camera_id, rule.id)] = timestamp

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -185,6 +188,127 @@ class AlertDatabase:
         except Exception as exc:
             self._logger.error("Database snapshot status update error: %s", exc)
             return 0
+
+    def get_recent_snapshot_alerts(self, snapshots_dir: Path, limit: int = 3) -> list[dict]:
+        """Latest distinct available snapshots, excluding known false positives.
+
+        Scan past missing/cleaned images rather than filtering only the latest
+        alert page, which could hide valid older snapshots.
+        """
+        base = Path(snapshots_dir).expanduser().resolve()
+        result, seen = [], set()
+        with self._lock, self._database.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM alerts WHERE snapshot_path IS NOT NULL "
+                "AND snapshot_cleaned_at IS NULL AND status != 'false_positive' "
+                "ORDER BY timestamp DESC, id DESC"
+            )
+            for row in rows:
+                path = Path(row["snapshot_path"]).expanduser()
+                try:
+                    path = (path if path.is_absolute() else PROJECT_ROOT / path).resolve()
+                    if (base not in path.parents or path.suffix.lower() != ".jpg"
+                            or path.relative_to(base).parts[0].startswith(".")
+                            or path in seen or not path.is_file()):
+                        continue
+                except (OSError, ValueError, RuntimeError):
+                    continue
+                seen.add(path)
+                result.append({**dict(row), "snapshot_status": "available"})
+                if len(result) >= limit:
+                    break
+        return result
+
+    def delete_alerts(self, ids: list[int], snapshots_dir: Path) -> dict:
+        """Delete explicit alerts and their unshared snapshots, including cached thumbnails.
+
+        Stage files before committing SQL so ordinary filesystem/SQL failures can
+        restore both. Shared snapshots survive until their last alert is deleted.
+        This is not a cross-filesystem crash-atomic transaction.
+        """
+        if (not isinstance(ids, list) or not 1 <= len(ids) <= 500
+                or any(type(i) is not int or i <= 0 for i in ids)):
+            raise ValueError("请选择 1～500 个有效告警 ID")
+        ids = list(dict.fromkeys(ids))
+        base = Path(snapshots_dir).expanduser().resolve()
+
+        def normalized(raw):
+            path = Path(str(raw)).expanduser()
+            return (path if path.is_absolute() else PROJECT_ROOT / path).resolve()
+
+        staged = []
+        staging = None
+        snapshots = shared = 0
+        with self._lock:
+            try:
+                with self._database.transaction() as conn:
+                    placeholders = ",".join("?" for _ in ids)
+                    rows = conn.execute(
+                        f"SELECT id, snapshot_path FROM alerts WHERE id IN ({placeholders})", ids,
+                    ).fetchall()
+                    paths = set()
+                    for row in rows:
+                        if not row["snapshot_path"]:
+                            continue
+                        path = normalized(row["snapshot_path"])
+                        if (base not in path.parents or path.suffix.lower() != ".jpg"
+                                or path.relative_to(base).parts[0].startswith(".")):
+                            raise ValueError("告警快照路径不在有效快照目录内，已取消删除")
+                        paths.add(path)
+                    referenced = {
+                        normalized(row[0]) for row in conn.execute(
+                            f"SELECT snapshot_path FROM alerts WHERE id NOT IN ({placeholders}) "
+                            "AND snapshot_path IS NOT NULL", ids,
+                        ) if row[0]
+                    }
+                    shared = len(paths & referenced)
+                    files = set()
+                    for path in paths - referenced:
+                        if path.exists():
+                            if not path.is_file():
+                                raise ValueError("快照路径不是文件，已取消删除")
+                            files.add(path)
+                            snapshots += 1
+                        relative = path.relative_to(base)
+                        thumbs = base / ".thumbs"
+                        if thumbs.exists():
+                            if thumbs.is_symlink():
+                                raise ValueError("缩略图目录不安全，已取消删除")
+                            for size_dir in thumbs.glob("w*"):
+                                cache = size_dir / relative
+                                if cache.exists() or cache.is_symlink():
+                                    resolved = cache.resolve()
+                                    if (size_dir.is_symlink() or thumbs not in resolved.parents
+                                            or not resolved.is_file()):
+                                        raise ValueError("缩略图路径不安全，已取消删除")
+                                    files.add(resolved)
+                    if files:
+                        staging = Path(tempfile.mkdtemp(prefix=".alert-delete-", dir=base.parent))
+                        for path in sorted(files):
+                            dest = staging / str(len(staged))
+                            try:
+                                os.replace(path, dest)
+                            except FileNotFoundError:
+                                continue  # Retention may already have removed this file.
+                            staged.append((path, dest))
+                    conn.execute(f"DELETE FROM alerts WHERE id IN ({placeholders})", ids)
+                    deleted = len(rows)
+            except Exception:
+                for original, saved in reversed(staged):
+                    original.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(saved, original)
+                if staging:
+                    shutil.rmtree(staging)
+                raise
+        cleanup_pending = False
+        if staging:
+            try:
+                shutil.rmtree(staging)
+            except OSError:
+                cleanup_pending = True
+                self._logger.exception("Deleted alert files await cleanup in %s", staging)
+        return {"deleted": deleted, "snapshots_deleted": snapshots,
+                "shared_snapshots_kept": shared, "cleanup_pending": cleanup_pending}
 
     def update_alert_status(
         self, alert_id: int, status: str, note: Optional[str] = None

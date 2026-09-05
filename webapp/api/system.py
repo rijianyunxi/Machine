@@ -64,6 +64,17 @@ def tail_logs(request: Request, tail: int = Query(500, ge=1, le=5000),
     return {"lines": get_state(request).tail_logs(tail=tail, level=level)}
 
 
+@router.post("/api/logs/clear")
+def clear_logs(request: Request, data: dict | None = None):
+    """Clear the active log file; log backups stay unless explicitly requested."""
+    try:
+        return get_state(request).clear_logs(
+            include_backups=bool((data or {}).get("include_backups", False))
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.post("/api/retention/run")
 def run_retention(request: Request):
     return get_state(request).run_retention()

@@ -13,6 +13,7 @@ export function Page({
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  useEffect(() => { document.title = `${title} · Machine`; }, [title]);
   useEffect(() => {
     const ph = document.querySelector(".page-head") as HTMLElement | null;
     if (ph) {

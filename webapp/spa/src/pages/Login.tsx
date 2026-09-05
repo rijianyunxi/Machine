@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* 登录表单：独立登录页与 401 弹窗复用同一组件。 */
@@ -12,6 +12,8 @@ export function LoginForm({
   onCancel?: () => void;
   compact?: boolean;
 }) {
+  const formId = useId();
+  useEffect(() => { if (!compact) document.title = "登录 · Machine"; }, [compact]);
   const nav = useNavigate();
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -43,18 +45,24 @@ export function LoginForm({
 
   const form = (
     <>
-      <label>用户名</label>
+      <label htmlFor={`${formId}-user`}>用户名</label>
       <input
         style={{ width: "100%" }}
+        id={`${formId}-user`}
+        aria-invalid={!!err}
+        aria-describedby={err ? `${formId}-error` : undefined}
         placeholder="请输入用户名"
         autoComplete="username"
         value={user}
         onChange={(e) => setUser(e.target.value)}
       />
-      <label>密码</label>
+      <label htmlFor={`${formId}-pass`}>密码</label>
       <input
         style={{ width: "100%" }}
         type="password"
+        id={`${formId}-pass`}
+        aria-invalid={!!err}
+        aria-describedby={err ? `${formId}-error` : undefined}
         placeholder="请输入密码"
         autoComplete="current-password"
         value={pass}
@@ -64,7 +72,7 @@ export function LoginForm({
         }}
       />
       {err ? (
-        <p className="muted" style={{ color: "var(--red)", marginTop: 10 }}>
+        <p id={`${formId}-error`} role="alert" className="muted" style={{ color: "var(--red)", marginTop: 10 }}>
           {err}
         </p>
       ) : null}
@@ -91,7 +99,7 @@ export function LoginForm({
 
   return (
     <div style={{ minHeight: "70vh", display: "grid", placeItems: "center" }}>
-      <div className="card" style={{ width: 380, padding: 30 }}>
+      <div className="card" style={{ width: "min(380px, calc(100vw - 32px))", padding: 30 }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
           <div
             className="logo"
@@ -104,7 +112,7 @@ export function LoginForm({
               placeItems: "center",
               background:
                 "linear-gradient(135deg,var(--accent),var(--accent-2))",
-              color: "#04121f",
+              color: "var(--on-accent)",
             }}
           >
             <svg

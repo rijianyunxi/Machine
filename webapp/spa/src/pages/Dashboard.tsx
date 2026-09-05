@@ -5,8 +5,9 @@ import type { AlertItem, StorageUsage, TrendDay } from "../api/types";
 import { Page } from "../layout/Page";
 import { Icon } from "../layout/icons";
 import { usePolling } from "../hooks/usePolling";
+import { useLightbox } from "../ui/Lightbox";
 import { BarChart } from "../ui/BarChart";
-import { Chip, Empty, StatusBadge } from "../ui/badges";
+import { Chip, StatusBadge } from "../ui/badges";
 
 function fmtUptime(s: number | null | undefined) {
   if (s == null) return "—";
@@ -51,6 +52,31 @@ interface CamLite {
   thread_alive: boolean;
 }
 
+function ViolationSnapshot({ alert, onOpen }: { alert: AlertItem; onOpen: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const title = alert.rule_name || `规则 ${alert.rule_id}`;
+  const source = alert.snapshot_url || "";
+  const thumb = source.startsWith("/snapshots/")
+    ? `/api/snapshots/thumb?${new URLSearchParams({ p: decodeURIComponent(source.slice("/snapshots/".length)), w: "420" })}`
+    : source;
+  return (
+    <figure className="dashboard-snapshot">
+      <button className="dashboard-snapshot__image" onClick={onOpen} disabled={failed}
+        aria-label={`查看违规快照：${title}，${alert.camera_name || alert.camera_id}`}>
+        {failed ? <span className="dashboard-snapshot__missing"><Icon name="images" size={24} />图片已失效</span> : (
+          <img src={thumb} alt={`${alert.camera_name || alert.camera_id} · ${title}`} onError={() => setFailed(true)} />
+        )}
+        <span className="dashboard-snapshot__label" title={title}>{title}</span>
+        {alert.status === "new" && <span className="dashboard-snapshot__pending">待复核</span>}
+      </button>
+      <figcaption>
+        <span title={alert.camera_name || alert.camera_id}>{alert.camera_name || alert.camera_id}</span>
+        <time dateTime={toLocalDate(alert.timestamp)?.toISOString()}>{tsToTime(alert.timestamp)}</time>
+      </figcaption>
+    </figure>
+  );
+}
+
 export default function DashboardPage() {
   const [cams, setCams] = useState<{ v: string; sub: React.ReactNode; ico: string }>({
     v: "—",
@@ -61,7 +87,12 @@ export default function DashboardPage() {
   const [snaps, setSnaps] = useState({ v: "—", sub: "", ico: "green" });
   const [up, setUp] = useState({ v: "—", sub: "" });
   const [trend, setTrend] = useState<TrendDay[]>([]);
+  const { showGallery } = useLightbox();
+  const [recentSnapshots, setRecentSnapshots] = useState<AlertItem[] | null>(null);
+  const [snapshotsError, setSnapshotsError] = useState(false);
   const [feed, setFeed] = useState<AlertItem[] | null>(null);
+  const [feedError, setFeedError] = useState(false);
+  const [feedUpdated, setFeedUpdated] = useState<number | null>(null);
   const [banner, setBanner] = useState<{ level: string; msg: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -139,11 +170,30 @@ export default function DashboardPage() {
     );
     setTrend(tr.trend);
 
-    const list = await api<{ items: AlertItem[] }>("/api/alerts?limit=10");
-    setFeed(list.items);
   }, []);
 
+  const refreshFeed = useCallback(async () => {
+    try {
+      const list = await api<{ items: AlertItem[] }>("/api/alerts?limit=10");
+      setFeed(list.items);
+      setFeedError(false);
+      setFeedUpdated(Date.now() / 1000);
+    } catch {
+      setFeedError(true);
+    }
+  }, []);
+  const refreshSnapshots = useCallback(async () => {
+    try {
+      const result = await api<{ items: AlertItem[] }>("/api/alerts/recent-snapshots");
+      setRecentSnapshots(result.items.slice(0, 3));
+      setSnapshotsError(false);
+    } catch {
+      setSnapshotsError(true);
+    }
+  }, []);
+  usePolling(refreshSnapshots, 3000);
   usePolling(refresh, 3000);
+  usePolling(refreshFeed, 3000);
 
   const camIcon = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
@@ -213,11 +263,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid row2" style={{ marginTop: 16 }}>
-        <div className="card">
+      <div className="dashboard-workspace">
+        <div className="card dashboard-live-card">
           <div className="card-title">
             <span>
-              实时告警 <span className="muted">每 3 秒刷新</span>
+              实时告警
             </span>
             <span className="cam-head">
               {alerts.pend > 0 ? (
@@ -228,69 +278,96 @@ export default function DashboardPage() {
               </Link>
             </span>
           </div>
-          <div className="feed" id="alert-feed">
-            {feed === null ? (
-              <Empty>加载中…</Empty>
-            ) : feed.length ? (
-              feed.map((a) => (
-                <div
-                  key={a.id}
-                  className={
-                    "item " +
-                    (a.status === "new"
-                      ? "hot"
-                      : a.status === "resolved" || a.status === "false_positive"
-                        ? "dim"
-                        : "")
-                  }
-                  title={tsToTime(a.timestamp)}
-                >
-                  <span className="t">{tsToClock(a.timestamp)}</span>
-                  <b>{a.camera_id}</b>
-                  <Chip text={"R" + String(a.rule_id).padStart(2, "0")} color="blue" />
-                  <span>{a.rule_name}</span>
-                  <span className="muted mono">conf {a.confidence?.toFixed(2)}</span>
-                  <StatusBadge status={a.status} />
-                </div>
-              ))
+          <div className="dashboard-feed-meta">
+            <span>最近 10 条 · 每 3 秒自动刷新</span>
+            <span>{feedError ? "更新暂停" : feedUpdated ? `更新于 ${tsToClock(feedUpdated)}` : "正在连接"}</span>
+          </div>
+          {feedError && <div className="banner red" role="status">告警暂时无法更新{feed?.length ? "，下方保留上次记录" : ""}<button className="ghost" onClick={refreshFeed}>重试</button></div>}
+          <div className="dashboard-alert-feed" id="alert-feed">
+            {feed?.length ? (
+              <ul className="dashboard-alert-list" aria-label="最近告警">
+                {feed.map((a) => (
+                  <li key={a.id}>
+                    <Link to="/alerts" className={`dashboard-alert-row${a.status === "new" ? " is-new" : ""}`}>
+                      <span className="dashboard-alert-icon" aria-hidden="true"><Icon name="alert-triangle" size={18} /></span>
+                      <div className="dashboard-alert-content">
+                        <div className="dashboard-alert-heading"><strong>{a.rule_name || `规则 ${a.rule_id}`}</strong><StatusBadge status={a.status} /></div>
+                        <div className="dashboard-alert-detail"><span>{a.camera_name || a.camera_id}</span><span>R{String(a.rule_id).padStart(2, "0")}</span><span>置信度 {a.confidence == null ? "—" : `${Math.round(a.confidence * 100)}%`}</span></div>
+                        <time className="dashboard-alert-time" dateTime={toLocalDate(a.timestamp)?.toISOString()}>{tsToTime(a.timestamp)}</time>
+                      </div>
+                      <Icon name="chevron-right" size={16} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <Empty>暂无告警记录</Empty>
+              <div className="dashboard-feed-empty" role="status">
+                <span className="dashboard-feed-empty__icon" aria-hidden="true"><Icon name={feedError ? "alert-triangle" : "alerts"} size={28} /></span>
+                <h3>{feedError ? "暂时无法获取告警" : feed === null ? "正在获取最新告警" : "暂无告警记录"}</h3>
+                <p>{feedError ? "请检查服务连接，系统会自动重试。" : feed === null ? "加载完成后将在这里展示最近记录。" : "新的告警将在这里自动出现，无需手动刷新。暂无记录不代表监控已正常运行。"}</p>
+                {!feedError && feed !== null && <Link className="dashboard-feed-link" to="/cameras">检查监控状态 <Icon name="arrow-right" size={14} /></Link>}
+              </div>
             )}
           </div>
         </div>
-        <div className="card chart">
-          <div className="card-title">
-            <span>近 7 天告警趋势</span>
-            <span className="legend">
-              <span className="li">
-                <span className="sw" style={{ background: "var(--red)" }} />
-                确认违规
+        <div className="dashboard-right-stack">
+          <section className="card dashboard-snapshots-card" aria-labelledby="recent-snapshots-title">
+            <div className="card-title">
+              <span id="recent-snapshots-title">最新违规快照</span>
+              <Link className="more" to="/snapshots">查看快照库 <Icon name="arrow-right" size={12} /></Link>
+            </div>
+            <p className="dashboard-snapshots-note">仅展示最新 3 张 · 已排除误报与已清理快照</p>
+            {snapshotsError && <div className="dashboard-snapshots-error" role="status">快照更新失败{recentSnapshots?.length ? "，暂显示上次结果" : ""}<button className="mini ghost" onClick={refreshSnapshots}>重试快照</button></div>}
+            {recentSnapshots?.length ? (
+              <div className="dashboard-snapshot-grid">
+                {recentSnapshots.map((alert, index) => (
+                  <ViolationSnapshot key={`${alert.id}:${alert.snapshot_url}`} alert={alert} onOpen={() => showGallery(
+                    recentSnapshots.map((a) => ({ src: a.snapshot_url!, title: `${a.rule_name} · ${a.camera_name || a.camera_id} · ${tsToTime(a.timestamp)}` })), index,
+                  )} />
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-snapshots-empty" role="status">
+                <Icon name="images" size={28} />
+                <strong>{snapshotsError ? "暂时无法获取快照" : recentSnapshots === null ? "正在加载违规快照" : "暂无违规快照"}</strong>
+                <span>{snapshotsError ? "请重试或稍候等待自动更新。" : "告警产生图片后，将在这里展示最近的违规现场。"}</span>
+              </div>
+            )}
+          </section>
+          <div className="card chart dashboard-trend-card">
+            <div className="card-title">
+              <span>近 7 天告警趋势</span>
+              <span className="legend">
+                <span className="li">
+                  <span className="sw" style={{ background: "var(--red)" }} />
+                  确认违规
+                </span>
+                <span className="li">
+                  <span
+                    className="sw"
+                    style={{ background: "linear-gradient(180deg, var(--accent-2), var(--accent))" }}
+                  />
+                  未处理
+                </span>
+                <span className="li">
+                  <span className="sw" style={{ background: "var(--muted)" }} />
+                  误报
+                </span>
               </span>
-              <span className="li">
-                <span
-                  className="sw"
-                  style={{ background: "linear-gradient(180deg, var(--accent-2), var(--accent))" }}
-                />
-                未处理
-              </span>
-              <span className="li">
-                <span className="sw" style={{ background: "var(--muted)" }} />
-                误报
-              </span>
-            </span>
+            </div>
+            <BarChart
+              height={210}
+              data={trend.map((d) => ({
+                label: d.day,
+                value: d.total,
+                segments: [
+                  { v: d.confirmed, c: "var(--red)", name: "确认违规" },
+                  { v: d.pending, c: "var(--accent)", name: "未处理" },
+                  { v: d.false_positive, c: "var(--muted)", name: "误报" },
+                ],
+              }))}
+            />
           </div>
-          <BarChart
-            height="fill"
-            data={trend.map((d) => ({
-              label: d.day,
-              value: d.total,
-              segments: [
-                { v: d.confirmed, c: "var(--red)", name: "确认违规" },
-                { v: d.pending, c: "var(--accent)", name: "未处理" },
-                { v: d.false_positive, c: "var(--muted)", name: "误报" },
-              ],
-            }))}
-          />
         </div>
       </div>
     </Page>

@@ -1,8 +1,10 @@
 import { Select } from "../ui/Select";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { AlertItem, AlertStatus, Camera, RuleEntry } from "../api/types";
 import { Page } from "../layout/Page";
+import { Icon } from "../layout/icons";
+import { useConfirm } from "../ui/Confirm";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { Chip, Empty, StatusBadge, useBusy } from "../ui/badges";
@@ -50,21 +52,43 @@ export default function AlertsPage() {
   const [offset, setOffset] = useState(0);
   const [target, setTarget] = useState<{ id: number; status: AlertStatus } | null>(null);
   const [note, setNote] = useState("");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const requestSeq = useRef(0);
+  const allRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
   const toast = useToast();
   const { showImage } = useLightbox();
   const { busy, wrap } = useBusy();
 
   const refresh = useCallback(
     async (off = offset) => {
-      const p = new URLSearchParams({ limit: String(LIMIT), offset: String(off) });
-      if (fCam) p.set("camera", fCam);
-      if (fRule) p.set("rule", fRule);
-      if (fStatus) p.set("status", fStatus);
-      if (fDays) p.set("days", fDays);
-      const data = await api<{ items: AlertItem[]; total: number }>("/api/alerts?" + p);
-      setItems(data.items);
-      setTotal(data.total);
-      setOffset(off);
+      const seq = ++requestSeq.current;
+      setLoading(true);
+      setLoadError("");
+      setSelected([]);
+      try {
+        const p = new URLSearchParams({ limit: String(LIMIT), offset: String(off) });
+        if (fCam) p.set("camera", fCam);
+        if (fRule) p.set("rule", fRule);
+        if (fStatus) p.set("status", fStatus);
+        if (fDays) p.set("days", fDays);
+        let data = await api<{ items: AlertItem[]; total: number }>("/api/alerts?" + p);
+        if (off > 0 && !data.items.length) {
+          off = Math.max(0, Math.floor((data.total - 1) / LIMIT) * LIMIT);
+          p.set("offset", String(off));
+          data = await api<{ items: AlertItem[]; total: number }>("/api/alerts?" + p);
+        }
+        if (seq !== requestSeq.current) return;
+        setItems(data.items);
+        setTotal(data.total);
+        setOffset(off);
+      } catch (e) {
+        if (seq === requestSeq.current) setLoadError((e as Error).message || "告警加载失败");
+      } finally {
+        if (seq === requestSeq.current) setLoading(false);
+      }
     },
     [fCam, fRule, fStatus, fDays, offset],
   );
@@ -76,7 +100,7 @@ export default function AlertsPage() {
     ]).then(([c, r]) => {
       setCams(c.cameras);
       setRules(r.rules);
-    });
+    }).catch((e) => toast((e as Error).message, false));
     refresh(0); // 初始查询（此时为默认筛选：最近 7 天）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -107,15 +131,43 @@ export default function AlertsPage() {
     }
   });
 
+  const locked = loading || !!busy.remove;
+  const allSelected = !!items?.length && selected.length === items.length;
+  useEffect(() => {
+    if (allRef.current) allRef.current.indeterminate = selected.length > 0 && !allSelected;
+  }, [selected, allSelected]);
+
+  const deleteSelected = wrap("remove", async () => {
+    const ids = [...selected];
+    if (!ids.length || loading) return;
+    if (!(await confirm(
+      `确定删除选中的 ${ids.length} 条告警？对应快照及缩略图将从快照库同步删除，且无法恢复。仍被其他告警引用的快照会保留。`,
+      { danger: true, okText: "删除告警及快照" },
+    ))) return;
+    try {
+      const result = await api<{ deleted: number; snapshots_deleted: number; shared_snapshots_kept: number; cleanup_pending: boolean }>(
+        "/api/alerts/batch-delete", { method: "POST", body: { ids } },
+      );
+      toast(`已删除 ${result.deleted} 条告警、${result.snapshots_deleted} 张快照` +
+        (result.shared_snapshots_kept ? `；保留 ${result.shared_snapshots_kept} 张共享快照` : ""));
+      if (result.cleanup_pending) toast("记录已删除，隔离文件尚未清理完成，请联系管理员检查服务日志", false);
+      await refresh();
+    } catch (e) {
+      toast((e as Error).message || "删除失败，请重试", false);
+    }
+  });
+
   return (
     <Page
       title="告警记录"
       subtitle="复核告警：确认真实违规 / 标记误报，误报率用于反哺调参"
     >
       <div className="card">
-        <div className="filter-bar">
+        <fieldset className="filter-bar alerts-filters" disabled={locked}>
           <Select
             style={{ minWidth: 150 }}
+            disabled={locked}
+            aria-label="筛选监控"
             value={fCam}
             onChange={(e) => setFCam(e.target.value)}
           >
@@ -128,6 +180,8 @@ export default function AlertsPage() {
           </Select>
           <Select
             style={{ minWidth: 170 }}
+            disabled={locked}
+            aria-label="筛选规则"
             value={fRule}
             onChange={(e) => setFRule(e.target.value)}
           >
@@ -140,6 +194,8 @@ export default function AlertsPage() {
           </Select>
           <Select
             style={{ minWidth: 130 }}
+            disabled={locked}
+            aria-label="筛选状态"
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value)}
           >
@@ -151,6 +207,8 @@ export default function AlertsPage() {
           </Select>
           <Select
             style={{ minWidth: 130 }}
+            disabled={locked}
+            aria-label="筛选时间"
             value={fDays}
             onChange={(e) => setFDays(e.target.value)}
           >
@@ -159,17 +217,31 @@ export default function AlertsPage() {
             <option value="30">最近 30 天</option>
             <option value="">全部时间</option>
           </Select>
+          {selected.length > 0 && (
+            <button className="ghost mini" disabled={locked} onClick={() => setSelected([])}>
+              取消选择
+            </button>
+          )}
+          <button className="danger mini" disabled={locked || !selected.length || !!loadError} onClick={deleteSelected}>
+            <Icon name="trash" size={14} />{busy.remove ? "正在处理…" : `批量删除${selected.length ? ` (${selected.length})` : ""}`}
+          </button>
           <button className="mini" onClick={query}>
             查询
           </button>
           <span className="muted" style={{ marginLeft: "auto" }}>
             {items ? `共 ${total} 条` : ""}
           </span>
-        </div>
-        <div className="table-wrap">
+        </fieldset>
+        {loadError && <div className="banner red" role="alert">加载失败：{loadError}<button className="ghost" disabled={locked} onClick={() => refresh()}>重试</button></div>}
+        <div className="table-wrap" aria-busy={loading}>
           <table>
             <thead>
               <tr>
+                <th className="alerts-select-cell">
+                  <input ref={allRef} type="checkbox" aria-label="全选当前页告警"
+                    checked={allSelected} disabled={locked || !items?.length || !!loadError}
+                    onChange={(e) => setSelected(e.target.checked ? (items || []).map((a) => a.id) : [])} />
+                </th>
                 <th>时间</th>
                 <th>监控</th>
                 <th>规则</th>
@@ -182,13 +254,18 @@ export default function AlertsPage() {
             <tbody>
               {items === null ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <Empty>加载中…</Empty>
                   </td>
                 </tr>
               ) : items.length ? (
                 items.map((a) => (
-                  <tr key={a.id}>
+                  <tr key={a.id} className={selected.includes(a.id) ? "alerts-row-selected" : undefined}>
+                    <td className="alerts-select-cell">
+                      <input type="checkbox" aria-label={`选择告警 ${a.id}`} checked={selected.includes(a.id)}
+                        disabled={locked || !!loadError}
+                        onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, a.id] : ids.filter((id) => id !== a.id))} />
+                    </td>
                     <td>
                       <div className="mono">{tsToTime(a.timestamp)}</div>
                       <div className="muted" style={{ fontSize: 11 }}>
@@ -234,12 +311,14 @@ export default function AlertsPage() {
                         <>
                           <button
                             className="mini danger"
+                            disabled={locked}
                             onClick={() => setTarget({ id: a.id, status: "confirmed" })}
                           >
                             确认违规
                           </button>
                           <button
                             className="mini ghost"
+                            disabled={locked}
                             onClick={() => setTarget({ id: a.id, status: "false_positive" })}
                           >
                             误报
@@ -249,7 +328,8 @@ export default function AlertsPage() {
                       {a.status !== "resolved" ? (
                         <button
                           className="mini ghost"
-                          onClick={() => setTarget({ id: a.id, status: "resolved" })}
+                          disabled={locked}
+                            onClick={() => setTarget({ id: a.id, status: "resolved" })}
                         >
                           完结
                         </button>
@@ -259,7 +339,7 @@ export default function AlertsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <Empty>无符合条件的告警</Empty>
                   </td>
                 </tr>
@@ -268,7 +348,7 @@ export default function AlertsPage() {
           </table>
         </div>
         <div className="pager">
-          <button className="mini ghost" disabled={offset <= 0} onClick={() => page(-1)}>
+          <button className="mini ghost" disabled={locked || offset <= 0} onClick={() => page(-1)}>
             上一页
           </button>
           <span className="muted">
@@ -278,7 +358,7 @@ export default function AlertsPage() {
           </span>
           <button
             className="mini ghost"
-            disabled={offset + LIMIT >= total}
+            disabled={locked || offset + LIMIT >= total}
             onClick={() => page(1)}
           >
             下一页
@@ -297,7 +377,8 @@ export default function AlertsPage() {
           onClose={() => setTarget(null)}
           footer={
             <>
-              <button className="ghost" onClick={() => setTarget(null)}>
+              <button className="ghost" disabled={locked}
+                            onClick={() => setTarget(null)}>
                 取消
               </button>
               <button disabled={busy.mark} onClick={submitStatus}>
